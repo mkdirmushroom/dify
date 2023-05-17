@@ -88,7 +88,6 @@ A: 现已支持英文与中文，你可以为我们贡献语言包。
 
 - 在我们的 [GitHub Repo](https://github.com/mkdirmushroom/dify) 上提交 Issue 或 PR
 - 在我们的 [Discord 社区](https://discord.gg/FngNHpbcY7) 上加入讨论
-- 发送邮件至 hello@dify.ai
 
 ## 贡献代码
 
