@@ -22,7 +22,7 @@ To set up a working development environment, just fork the project git repositor
 
 ### Fork the repository
 
-you need to fork the [repository](https://github.com/langgenius/dify).
+you need to fork the [repository](https://github.com/mkdirmushroom/dify).
 
 ### Clone the repo
 

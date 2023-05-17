@@ -79,7 +79,7 @@ A: English and Chinese are currently supported, and you can contribute language 
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=langgenius/dify&type=Date)](https://star-history.com/#langgenius/dify&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=mkdirmushroom/dify&type=Date)](https://star-history.com/#mkdirmushroom/dify&Date)
 
 ## Contact Us
 

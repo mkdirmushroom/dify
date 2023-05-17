@@ -1,6 +1,6 @@
 # 贡献
 
-感谢您对 [Dify](https://dify.ai) 的兴趣，并希望您能够做出贡献！在开始之前，请先阅读[行为准则](https://github.com/langgenius/.github/blob/main/CODE_OF_CONDUCT.md)并查看[现有问题](https://github.com/langgenius/dify/issues)。
+感谢您对 [Dify](https://dify.ai) 的兴趣，并希望您能够做出贡献！在开始之前，请先阅读[行为准则](https://github.com/langgenius/.github/blob/main/CODE_OF_CONDUCT.md)并查看[现有问题](https://github.com/mkdirmushroom/dify/issues)。
 本文档介绍了如何设置开发环境以构建和测试 [Dify](https://dify.ai)。
 
 ### 安装依赖项
@@ -20,7 +20,7 @@
 
 ### Fork存储库
 
-您需要 fork [存储库](https://github.com/langgenius/dify)。
+您需要 fork [存储库](https://github.com/mkdirmushroom/dify)。
 
 ### 克隆存储库
 
@@ -46,7 +46,7 @@ git clone git@github.com:<github_username>/dify.git
 
 在进行更改后，打开一个拉取请求（PR）。提交拉取请求后，Dify 团队/社区的其他人将与您一起审查它。
 
-如果遇到问题，比如合并冲突或不知道如何打开拉取请求，请查看 GitHub 的[拉取请求教程](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests)，了解如何解决合并冲突和其他问题。一旦您的 PR 被合并，您将自豪地被列为[贡献者表](https://github.com/langgenius/dify/graphs/contributors)中的一员。
+如果遇到问题，比如合并冲突或不知道如何打开拉取请求，请查看 GitHub 的[拉取请求教程](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests)，了解如何解决合并冲突和其他问题。一旦您的 PR 被合并，您将自豪地被列为[贡献者表](https://github.com/mkdirmushroom/dify/graphs/contributors)中的一员。
 
 ## 社区渠道
 

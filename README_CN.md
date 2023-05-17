@@ -80,13 +80,13 @@ A: 现已支持英文与中文，你可以为我们贡献语言包。
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=langgenius/dify&type=Date)](https://star-history.com/#langgenius/dify&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=mkdirmushroom/dify&type=Date)](https://star-history.com/#mkdirmushroom/dify&Date)
 
 ## 联系我们
 
 如果您有任何问题、建议或合作意向，欢迎通过以下方式联系我们：
 
-- 在我们的 [GitHub Repo](https://github.com/langgenius/dify) 上提交 Issue 或 PR
+- 在我们的 [GitHub Repo](https://github.com/mkdirmushroom/dify) 上提交 Issue 或 PR
 - 在我们的 [Discord 社区](https://discord.gg/FngNHpbcY7) 上加入讨论
 - 发送邮件至 hello@dify.ai
 

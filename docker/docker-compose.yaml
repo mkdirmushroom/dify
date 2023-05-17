@@ -2,7 +2,7 @@ version: '3.1'
 services:
   # API service
   api:
-    image: langgenius/dify-api:latest
+    image: mkdirmushroom/dify-api:latest
     restart: always
     environment:
       # Startup mode, 'api' starts the API server.
@@ -106,7 +106,7 @@ services:
   # worker service
   # The Celery worker for processing the queue.
   worker:
-    image: langgenius/dify-api:latest
+    image: mkdirmushroom/dify-api:latest
     restart: always
     environment:
       # Startup mode, 'worker' starts the Celery worker for processing the queue.
@@ -150,7 +150,7 @@ services:
 
   # Frontend web application.
   web:
-    image: langgenius/dify-web:latest
+    image: mkdirmushroom/dify-web:latest
     restart: always
     environment:
       EDITION: SELF_HOSTED

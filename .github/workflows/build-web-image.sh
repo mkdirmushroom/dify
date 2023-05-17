@@ -3,7 +3,7 @@
 set -eo pipefail
 
 SHA=$(git rev-parse HEAD)
-REPO_NAME=langgenius/dify
+REPO_NAME=mkdirmushroom/dify
 WEB_REPO_NAME="${REPO_NAME}-web"
 
 if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
