@@ -145,7 +145,6 @@ def register_blueprints(app):
     from controllers.web import bp as web_bp
     from controllers.console import bp as console_app_bp
 
-    app.register_blueprint(service_api_bp)
 
     CORS(service_api_bp,
          resources={
@@ -155,6 +154,7 @@ def register_blueprints(app):
          methods=['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
          expose_headers=['X-Version', 'X-Env']
          )
+    app.register_blueprint(service_api_bp)
 
     CORS(web_bp,
          resources={
