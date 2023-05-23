@@ -148,6 +148,8 @@ class Config:
             'CONSOLE_CORS_ALLOW_ORIGINS', self.CONSOLE_URL)
         self.WEB_API_CORS_ALLOW_ORIGINS = get_cors_allow_origins(
             'WEB_API_CORS_ALLOW_ORIGINS', '*')
+        self.SERVICE_API_CORS_ALLOW_ORIGINS = get_cors_allow_origins(
+            'SERVICE_API_CORS_ALLOW_ORIGINS', '*')
 
         # sentry settings
         self.SENTRY_DSN = get_env('SENTRY_DSN')
