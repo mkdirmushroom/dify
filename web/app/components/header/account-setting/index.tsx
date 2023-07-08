@@ -1,18 +1,21 @@
 'use client'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
-import { AtSymbolIcon, GlobeAltIcon, UserIcon, XMarkIcon, CubeTransparentIcon, UsersIcon } from '@heroicons/react/24/outline'
+import { AtSymbolIcon, CubeTransparentIcon, GlobeAltIcon, UserIcon, UsersIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { GlobeAltIcon as GlobalAltIconSolid, UserIcon as UserIconSolid, UsersIcon as UsersIconSolid } from '@heroicons/react/24/solid'
 import AccountPage from './account-page'
 import MembersPage from './members-page'
 import IntegrationsPage from './Integrations-page'
 import LanguagePage from './language-page'
 import ProviderPage from './provider-page'
+import DataSourcePage from './data-source-page'
 import s from './index.module.css'
 import Modal from '@/app/components/base/modal'
+import { Database03 } from '@/app/components/base/icons/src/vender/line/development'
+import { Database03 as Database03Solid } from '@/app/components/base/icons/src/vender/solid/development'
 
 const iconClassName = `
-  w-[18px] h-[18px] ml-3 mr-2
+  w-4 h-4 ml-3 mr-2
 `
 
 type IAccountSettingProps = {
@@ -48,7 +51,7 @@ export default function AccountSetting({
           icon: <GlobeAltIcon className={iconClassName} />,
           activeIcon: <GlobalAltIconSolid className={iconClassName} />,
         },
-      ]
+      ],
     },
     {
       key: 'workspace-group',
@@ -66,8 +69,14 @@ export default function AccountSetting({
           icon: <CubeTransparentIcon className={iconClassName} />,
           activeIcon: <CubeTransparentIcon className={iconClassName} />,
         },
-      ]
-    }
+        {
+          key: 'data-source',
+          name: t('common.settings.dataSource'),
+          icon: <Database03 className={iconClassName} />,
+          activeIcon: <Database03Solid className={iconClassName} />,
+        },
+      ],
+    },
   ]
 
   return (
@@ -125,6 +134,9 @@ export default function AccountSetting({
           }
           {
             activeMenu === 'provider' && <ProviderPage />
+          }
+          {
+            activeMenu === 'data-source' && <DataSourcePage />
           }
         </div>
       </div>

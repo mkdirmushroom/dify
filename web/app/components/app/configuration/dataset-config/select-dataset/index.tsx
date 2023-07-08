@@ -1,9 +1,11 @@
 'use client'
 import type { FC } from 'react'
-import React, { useEffect } from 'react'
+import React, { useRef, useState } from 'react'
+import { useGetState, useInfiniteScroll } from 'ahooks'
 import cn from 'classnames'
 import { useTranslation } from 'react-i18next'
 import Link from 'next/link'
+import produce from 'immer'
 import TypeIcon from '../type-icon'
 import s from './style.module.css'
 import Modal from '@/app/components/base/modal'
@@ -27,19 +29,50 @@ const SelectDataSet: FC<ISelectDataSetProps> = ({
   onSelect,
 }) => {
   const { t } = useTranslation()
-  const [selected, setSelected] = React.useState<DataSet[]>([])
+  const [selected, setSelected] = React.useState<DataSet[]>(selectedIds.map(id => ({ id }) as any))
   const [loaded, setLoaded] = React.useState(false)
   const [datasets, setDataSets] = React.useState<DataSet[] | null>(null)
   const hasNoData = !datasets || datasets?.length === 0
   const canSelectMulti = true
-  useEffect(() => {
-    (async () => {
-      const { data } = await fetchDatasets({ url: '/datasets', params: { page: 1 } })
-      setDataSets(data)
-      setLoaded(true)
-      setSelected(data.filter(item => selectedIds.includes(item.id)))
-    })()
-  }, [])
+
+  const listRef = useRef<HTMLDivElement>(null)
+  const [page, setPage, getPage] = useGetState(1)
+  const [isNoMore, setIsNoMore] = useState(false)
+
+  useInfiniteScroll(
+    async () => {
+      if (!isNoMore) {
+        const { data, has_more } = await fetchDatasets({ url: '/datasets', params: { page } })
+        setPage(getPage() + 1)
+        setIsNoMore(!has_more)
+        const newList = [...(datasets || []), ...data]
+        setDataSets(newList)
+        setLoaded(true)
+        if (!selected.find(item => !item.name))
+          return { list: [] }
+
+        const newSelected = produce(selected, (draft) => {
+          selected.forEach((item, index) => {
+            if (!item.name) { // not fetched database
+              const newItem = newList.find(i => i.id === item.id)
+              if (newItem)
+                draft[index] = newItem
+            }
+          })
+        })
+        setSelected(newSelected)
+      }
+      return { list: [] }
+    },
+    {
+      target: listRef,
+      isNoMore: () => {
+        return isNoMore
+      },
+      reloadDeps: [isNoMore],
+    },
+  )
+
   const toggleSelect = (dataSet: DataSet) => {
     const isSelected = selected.some(item => item.id === dataSet.id)
     if (isSelected) {
@@ -83,7 +116,7 @@ const SelectDataSet: FC<ISelectDataSetProps> = ({
 
       {datasets && datasets?.length > 0 && (
         <>
-          <div className='mt-7 space-y-1 max-h-[286px] overflow-y-auto'>
+          <div ref={listRef} className='mt-7 space-y-1 max-h-[286px] overflow-y-auto'>
             {datasets.map(item => (
               <div
                 key={item.id}

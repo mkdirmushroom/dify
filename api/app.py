@@ -1,5 +1,7 @@
 # -*- coding:utf-8 -*-
 import os
+from datetime import datetime
+
 if not os.environ.get("DEBUG") or os.environ.get("DEBUG").lower() != 'true':
     from gevent import monkey
     monkey.patch_all()
@@ -12,13 +14,13 @@ from flask import Flask, request, Response, session
 import flask_login
 from flask_cors import CORS
 
-from extensions import ext_session, ext_celery, ext_sentry, ext_redis, ext_login, ext_vector_store, ext_migrate, \
+from extensions import ext_session, ext_celery, ext_sentry, ext_redis, ext_login, ext_migrate, \
     ext_database, ext_storage
 from extensions.ext_database import db
 from extensions.ext_login import login_manager
 
 # DO NOT REMOVE BELOW
-from models import model, account, dataset, web, task
+from models import model, account, dataset, web, task, source
 from events import event_handlers
 # DO NOT REMOVE ABOVE
 
@@ -77,7 +79,6 @@ def initialize_extensions(app):
     ext_database.init_app(app)
     ext_migrate.init(app, db)
     ext_redis.init_app(app)
-    ext_vector_store.init_app(app)
     ext_storage.init_app(app)
     ext_celery.init_app(app)
     ext_session.init_app(app)
@@ -121,6 +122,9 @@ def load_user(user_id):
                 if tenant_account_join:
                     account.current_tenant_id = tenant_account_join.tenant_id
                     session['workspace_id'] = account.current_tenant_id
+
+            account.last_active_at = datetime.utcnow()
+            db.session.commit()
 
             # Log in the user with the updated user_id
             flask_login.login_user(account, remember=True)

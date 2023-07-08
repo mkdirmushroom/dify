@@ -35,7 +35,9 @@ export type IOnError = (msg: string) => void
 
 type IOtherOptions = {
   isPublicAPI?: boolean
+  bodyStringify?: boolean
   needAllResponseContent?: boolean
+  deleteContentType?: boolean
   onData?: IOnData // for stream
   onError?: IOnError
   onCompleted?: IOnCompleted // for stream
@@ -132,13 +134,24 @@ const baseFetch = (
   fetchOptions: any,
   {
     isPublicAPI = false,
+    bodyStringify = true,
     needAllResponseContent,
+    deleteContentType,
   }: IOtherOptions,
 ) => {
   const options = Object.assign({}, baseOptions, fetchOptions)
   if (isPublicAPI) {
     const sharedToken = globalThis.location.pathname.split('/').slice(-1)[0]
     options.headers.set('Authorization', `bearer ${sharedToken}`)
+  }
+
+  if (deleteContentType) {
+    options.headers.delete('Content-Type')
+  }
+  else {
+    const contentType = options.headers.get('Content-Type')
+    if (!contentType)
+      options.headers.set('Content-Type', ContentType.json)
   }
 
   const urlPrefix = isPublicAPI ? PUBLIC_API_PREFIX : API_PREFIX
@@ -160,7 +173,7 @@ const baseFetch = (
     delete options.params
   }
 
-  if (body)
+  if (body && bodyStringify)
     options.body = JSON.stringify(body)
 
   // Handle timeout
@@ -285,6 +298,10 @@ export const ssePost = (url: string, fetchOptions: any, { isPublicAPI = false, o
     signal: abortController.signal,
   }, fetchOptions)
 
+  const contentType = options.headers.get('Content-Type')
+  if (!contentType)
+    options.headers.set('Content-Type', ContentType.json)
+
   getAbortController?.(abortController)
 
   const urlPrefix = isPublicAPI ? PUBLIC_API_PREFIX : API_PREFIX
@@ -308,13 +325,13 @@ export const ssePost = (url: string, fetchOptions: any, { isPublicAPI = false, o
       }
       return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
         if (moreInfo.errorMessage) {
+          onError?.(moreInfo.errorMessage)
           Toast.notify({ type: 'error', message: moreInfo.errorMessage })
           return
         }
         onData?.(str, isFirstMessage, moreInfo)
       }, onCompleted)
     }).catch((e) => {
-      // debugger
       Toast.notify({ type: 'error', message: e })
       onError?.(e)
     })

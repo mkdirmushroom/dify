@@ -50,7 +50,8 @@ const translation = {
         'How much to penalize new tokens based on their existing frequency in the text so far. Decreases the model\'s likelihood to repeat the same line verbatim.',
       maxToken: 'Max token',
       maxTokenTip:
-        'Max tokens generated is 2,048 or 4,000, depending on the model. Prompt and completion share this limit. One token is roughly 1 English character.',
+        'Max tokens depending on the model. Prompt and completion share this limit. One token is roughly 1 English character.',
+      maxTokenSettingTip: 'Your max token setting is high, potentially limiting space for prompts, queries, and data. Consider setting it below 2/3.',
       setToCurrentModelMaxTokenTip: 'Max token is updated to the maximum token of the current model 4,000.',
     },
     tone: {
@@ -87,6 +88,7 @@ const translation = {
     integrations: 'Integrations',
     language: 'Language',
     provider: 'Model Provider',
+    dataSource: 'Data Source',
   },
   account: {
     avatar: 'Avatar',
@@ -110,7 +112,7 @@ const translation = {
     normal: 'Normal',
     normalTip: 'Only can use apps，can not build apps',
     inviteTeamMember: 'Add team member',
-    inviteTeamMemberTip: 'He can access your team data directly after signing in.',
+    inviteTeamMemberTip: 'They can access your team data directly after signing in.',
     email: 'Email',
     emailInvalid: 'Invalid Email Format',
     emailPlaceholder: 'Input Email',
@@ -172,6 +174,29 @@ const translation = {
       back: ' technology.',
     },
   },
+  dataSource: {
+    add: 'Add a data source',
+    connect: 'Connect',
+    notion: {
+      title: 'Notion',
+      description: 'Using Notion as a data source for the dataset.',
+      connectedWorkspace: 'Connected workspace',
+      addWorkspace: 'Add workspace',
+      connected: 'Connected',
+      disconnected: 'Disconnected',
+      changeAuthorizedPages: 'Change authorized pages',
+      pagesAuthorized: 'Pages authorized',
+      sync: 'Sync',
+      remove: 'Remove',
+      selector: {
+        pageSelected: 'Pages Selected',
+        searchPages: 'Search pages...',
+        noSearchResult: 'No search resluts',
+        addPages: 'Add pages',
+        preview: 'PREVIEW',
+      },
+    },
+  },
   about: {
     changeLog: 'Changlog',
     updateNow: 'Update now',
@@ -199,6 +224,11 @@ const translation = {
     emptyTip: 'The data set has not been associated, please go to the application or plug-in to complete the association.',
     viewDoc: 'View documentation',
     relatedApp: 'linked apps',
+  },
+  voiceInput: {
+    speaking: 'Speak now...',
+    converting: 'Converting to text...',
+    notAllow: 'microphone not authorized',
   },
 }
 

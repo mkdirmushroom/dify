@@ -67,6 +67,23 @@ class Dataset(db.Model):
         return db.session.query(func.count(Document.id)).filter(Document.dataset_id == self.id).scalar()
 
     @property
+    def available_document_count(self):
+        return db.session.query(func.count(Document.id)).filter(
+            Document.dataset_id == self.id,
+            Document.indexing_status == 'completed',
+            Document.enabled == True,
+            Document.archived == False
+        ).scalar()
+
+    @property
+    def available_segment_count(self):
+        return db.session.query(func.count(DocumentSegment.id)).filter(
+            DocumentSegment.dataset_id == self.id,
+            DocumentSegment.status == 'completed',
+            DocumentSegment.enabled == True
+        ).scalar()
+
+    @property
     def word_count(self):
         return Document.query.with_entities(func.coalesce(func.sum(Document.word_count))) \
             .filter(Document.dataset_id == self.id).scalar()
@@ -190,7 +207,7 @@ class Document(db.Model):
     doc_type = db.Column(db.String(40), nullable=True)
     doc_metadata = db.Column(db.JSON, nullable=True)
 
-    DATA_SOURCES = ['upload_file']
+    DATA_SOURCES = ['upload_file', 'notion_import']
 
     @property
     def display_status(self):
@@ -242,6 +259,8 @@ class Document(db.Model):
                             'created_at': file_detail.created_at.timestamp()
                         }
                     }
+            elif self.data_source_type == 'notion_import':
+                return json.loads(self.data_source_info)
         return {}
 
     @property
@@ -258,7 +277,7 @@ class Document(db.Model):
 
     @property
     def dataset(self):
-        return Dataset.query.get(self.dataset_id)
+        return db.session.query(Dataset).filter(Dataset.id == self.dataset_id).one_or_none()
 
     @property
     def segment_count(self):
@@ -393,7 +412,18 @@ class DatasetKeywordTable(db.Model):
 
     @property
     def keyword_table_dict(self):
-        return json.loads(self.keyword_table) if self.keyword_table else None
+        class SetDecoder(json.JSONDecoder):
+            def __init__(self, *args, **kwargs):
+                super().__init__(object_hook=self.object_hook, *args, **kwargs)
+
+            def object_hook(self, dct):
+                if isinstance(dct, dict):
+                    for keyword, node_idxs in dct.items():
+                        if isinstance(node_idxs, list):
+                            dct[keyword] = set(node_idxs)
+                return dct
+
+        return json.loads(self.keyword_table, cls=SetDecoder) if self.keyword_table else None
 
 
 class Embedding(db.Model):

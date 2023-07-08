@@ -38,6 +38,7 @@ const Debug: FC<IDebug> = ({
     mode,
     introduction,
     suggestedQuestionsAfterAnswerConfig,
+    speechToTextConfig,
     moreLikeThisConfig,
     inputs,
     // setInputs,
@@ -159,6 +160,7 @@ const Debug: FC<IDebug> = ({
         enabled: false,
       },
       suggested_questions_after_answer: suggestedQuestionsAfterAnswerConfig,
+      speech_to_text: speechToTextConfig,
       agent_mode: {
         enabled: true,
         tools: [...postDatasets],
@@ -308,6 +310,7 @@ const Debug: FC<IDebug> = ({
       user_input_form: promptVariablesToUserInputsForm(modelConfig.configs.prompt_variables),
       opening_statement: introduction,
       suggested_questions_after_answer: suggestedQuestionsAfterAnswerConfig,
+      speech_to_text: speechToTextConfig,
       more_like_this: moreLikeThisConfig,
       agent_mode: {
         enabled: true,
@@ -370,8 +373,7 @@ const Debug: FC<IDebug> = ({
         {mode === AppType.chat && (
           <div className="mt-[34px] h-full flex flex-col">
             <div className={cn(doShowSuggestion ? 'pb-[140px]' : (isResponsing ? 'pb-[113px]' : 'pb-[66px]'), 'relative mt-1.5 grow h-[200px] overflow-hidden')}>
-              <div className="h-full overflow-y-auto" ref={chatListDomRef}>
-                {/* {JSON.stringify(chatList)} */}
+              <div className="h-full overflow-y-auto overflow-x-hidden" ref={chatListDomRef}>
                 <Chat
                   chatList={chatList}
                   onSend={onSend}
@@ -387,6 +389,7 @@ const Debug: FC<IDebug> = ({
                   }}
                   isShowSuggestion={doShowSuggestion}
                   suggestionList={suggestQuestions}
+                  isShowSpeechToText={speechToTextConfig.enabled}
                 />
               </div>
             </div>

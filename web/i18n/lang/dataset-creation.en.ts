@@ -13,6 +13,7 @@ const translation = {
   },
   stepOne: {
     filePreview: 'File Preview',
+    pagePreview: 'Page Preview',
     dataSourceType: {
       file: 'Import from text file',
       notion: 'Sync from Notion',
@@ -22,7 +23,7 @@ const translation = {
       title: 'Upload text file',
       button: 'Drag and drop file, or',
       browse: 'Browse',
-      tip: 'Supports txt, html, markdown, xlsx, and pdf.',
+      tip: 'Supports txt, html, markdown, xlsx, and pdf. Max 15MB each.',
       validation: {
         typeError: 'File type not supported',
         size: 'File too large. Maximum is 15MB',
@@ -32,6 +33,9 @@ const translation = {
       change: 'Change',
       failed: 'Upload failed',
     },
+    notionSyncTitle: 'Notion is not connected',
+    notionSyncTip: 'To sync with Notion, connection to Notion must be established first.',
+    connect: 'Go to connect',
     button: 'next',
     emptyDatasetCreation: 'I want to create an empty dataset',
     modal: {
@@ -73,7 +77,11 @@ const translation = {
     emstimateSegment: 'Estimated segments',
     segmentCount: 'segments',
     calculating: 'Calculating...',
-    fileName: 'Preprocess document',
+    fileSource: 'Preprocess documents',
+    notionSource: 'Preprocess pages',
+    other: 'and other ',
+    fileUnit: ' files',
+    notionUnit: ' pages',
     lastStep: 'Last step',
     nextStep: 'Save & Process',
     save: 'Save & Process',

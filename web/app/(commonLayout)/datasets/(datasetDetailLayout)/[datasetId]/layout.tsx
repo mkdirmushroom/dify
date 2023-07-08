@@ -28,6 +28,7 @@ import Indicator from '@/app/components/header/indicator'
 import AppIcon from '@/app/components/base/app-icon'
 import Loading from '@/app/components/base/loading'
 import DatasetDetailContext from '@/context/dataset-detail'
+import { DataSourceType } from '@/models/datasets'
 
 // import { fetchDatasetDetail } from '@/service/datasets'
 
@@ -92,7 +93,7 @@ const DatasetDetailLayout: FC<IAppDetailLayoutProps> = (props) => {
   const pathname = usePathname()
   const hideSideBar = /documents\/create$/.test(pathname)
   const { t } = useTranslation()
-  const { data: datasetRes, error } = useSWR({
+  const { data: datasetRes, error, mutate: mutateDatasetRes } = useSWR({
     action: 'fetchDataDetail',
     datasetId,
   }, apiParams => fetchDataDetail(apiParams.datasetId))
@@ -123,7 +124,7 @@ const DatasetDetailLayout: FC<IAppDetailLayoutProps> = (props) => {
         ? (
           <>
             <div className={s.subTitle}>{relatedApps?.total || '--'} {t('common.datasetMenus.relatedApp')}</div>
-            {relatedApps?.data?.map(item => (<LikedItem detail={item} />))}
+            {relatedApps?.data?.map((item, index) => (<LikedItem key={index} detail={item} />))}
           </>
         )
         : (
@@ -162,11 +163,12 @@ const DatasetDetailLayout: FC<IAppDetailLayoutProps> = (props) => {
         desc={datasetRes?.description || '--'}
         navigation={navigation}
         extraInfo={<ExtraInfo />}
-        iconType='dataset'
+        iconType={datasetRes?.data_source_type === DataSourceType.NOTION ? 'notion' : 'dataset'}
       />}
       <DatasetDetailContext.Provider value={{
         indexingTechnique: datasetRes?.indexing_technique,
         dataset: datasetRes,
+        mutateDatasetRes: () => mutateDatasetRes(),
       }}>
         <div className="bg-white grow">{children}</div>
       </DatasetDetailContext.Provider>

@@ -1,15 +1,17 @@
 'use client'
-import React, { FC } from 'react'
+import type { FC } from 'react'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useContext } from 'use-context-selector'
-import ConfigContext from '@/context/debug-configuration'
+import { useBoolean } from 'ahooks'
+import { isEqual } from 'lodash-es'
+import produce from 'immer'
 import FeaturePanel from '../base/feature-panel'
 import OperationBtn from '../base/operation-btn'
 import CardItem from './card-item'
-import { useBoolean } from 'ahooks'
 import SelectDataSet from './select-dataset'
-import { DataSet } from '@/models/datasets'
-import { isEqual } from 'lodash-es'
+import ConfigContext from '@/context/debug-configuration'
+import type { DataSet } from '@/models/datasets'
 
 const Icon = (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -23,24 +25,40 @@ const DatasetConfig: FC = () => {
   const {
     dataSets: dataSet,
     setDataSets: setDataSet,
-    setFormattingChanged
+    setFormattingChanged,
   } = useContext(ConfigContext)
-  const selectedIds = dataSet.map((item) => item.id)
+  const selectedIds = dataSet.map(item => item.id)
 
   const hasData = dataSet.length > 0
   const [isShowSelectDataSet, { setTrue: showSelectDataSet, setFalse: hideSelectDataSet }] = useBoolean(false)
   const handleSelect = (data: DataSet[]) => {
-    if (isEqual(data, dataSet)) {
+    if (isEqual(data.map(item => item.id), dataSet.map(item => item.id))) {
       hideSelectDataSet()
+      return
     }
+
     setFormattingChanged(true)
-    setDataSet(data)
+    if (data.find(item => !item.name)) { // has not loaded selected dataset
+      const newSelected = produce(data, (draft) => {
+        data.forEach((item, index) => {
+          if (!item.name) { // not fetched database
+            const newItem = dataSet.find(i => i.id === item.id)
+            if (newItem)
+              draft[index] = newItem
+          }
+        })
+      })
+      setDataSet(newSelected)
+    }
+    else {
+      setDataSet(data)
+    }
     hideSelectDataSet()
   }
   const onRemove = (id: string) => {
-    setDataSet(dataSet.filter((item) => item.id !== id))
+    setDataSet(dataSet.filter(item => item.id !== id))
+    setFormattingChanged(true)
   }
-
 
   return (
     <FeaturePanel
@@ -50,20 +68,22 @@ const DatasetConfig: FC = () => {
       headerRight={<OperationBtn type="add" onClick={showSelectDataSet} />}
       hasHeaderBottomBorder={!hasData}
     >
-      {hasData ? (
-        <div className='flex flex-wrap justify-between'>
-          {dataSet.map((item) => (
-            <CardItem
-              className="mb-2"
-              key={item.id}
-              config={item}
-              onRemove={onRemove}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className='pt-2 pb-1 text-xs text-gray-500'>{t('appDebug.feature.dataSet.noData')}</div>
-      )}
+      {hasData
+        ? (
+          <div className='flex flex-wrap justify-between'>
+            {dataSet.map(item => (
+              <CardItem
+                className="mb-2"
+                key={item.id}
+                config={item}
+                onRemove={onRemove}
+              />
+            ))}
+          </div>
+        )
+        : (
+          <div className='pt-2 pb-1 text-xs text-gray-500'>{t('appDebug.feature.dataSet.noData')}</div>
+        )}
 
       {isShowSelectDataSet && (
         <SelectDataSet

@@ -32,12 +32,11 @@ class Account(UserMixin, db.Model):
     timezone = db.Column(db.String(255))
     last_login_at = db.Column(db.DateTime)
     last_login_ip = db.Column(db.String(255))
+    last_active_at = db.Column(db.DateTime, nullable=False, server_default=db.text('CURRENT_TIMESTAMP(0)'))
     status = db.Column(db.String(16), nullable=False, server_default=db.text("'active'::character varying"))
     initialized_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, nullable=False, server_default=db.text('CURRENT_TIMESTAMP(0)'))
     updated_at = db.Column(db.DateTime, nullable=False, server_default=db.text('CURRENT_TIMESTAMP(0)'))
-
-    _current_tenant: db.Model = None
 
     @property
     def current_tenant(self):

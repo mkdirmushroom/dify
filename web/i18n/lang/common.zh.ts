@@ -50,7 +50,8 @@ const translation = {
         'Frequency penalty 是根据重复词在目前文本中的出现频率来对其进行惩罚。正值将不太可能重复常用单词和短语。',
       maxToken: '最大 Token',
       maxTokenTip:
-        '生成的最大令牌数为 2,048 或 4,000，取决于模型。提示和完成共享令牌数限制。一个令牌约等于 1 个英文或 半个中文字符。',
+        '生成的最大令牌数取决于模型。提示和完成共享令牌数限制。一个令牌约等于 1 个英文或 半个中文字符。',
+      maxTokenSettingTip: '您设置的最大 tokens 数较大，可能会导致 prompt、用户问题、数据集内容没有 token 空间进行处理，建议设置到 2/3 以下。',
       setToCurrentModelMaxTokenTip: '最大令牌数更新为当前模型最大的令牌数 4,000。',
     },
     tone: {
@@ -87,6 +88,7 @@ const translation = {
     integrations: '集成',
     language: '语言',
     provider: '模型供应商',
+    dataSource: '数据来源',
   },
   account: {
     avatar: '头像',
@@ -173,6 +175,29 @@ const translation = {
       back: ' 技术进行加密和存储。',
     },
   },
+  dataSource: {
+    add: '添加数据源',
+    connect: '绑定',
+    notion: {
+      title: 'Notion',
+      description: '使用 Notion 作为数据集的数据源。',
+      connectedWorkspace: '已绑定工作空间',
+      addWorkspace: '添加工作空间',
+      connected: '已绑定',
+      disconnected: '未绑定',
+      changeAuthorizedPages: '更改授权页面',
+      pagesAuthorized: '已授权页面',
+      sync: '同步',
+      remove: '删除',
+      selector: {
+        pageSelected: '已选页面',
+        searchPages: '搜索页面...',
+        noSearchResult: '无搜索结果',
+        addPages: '添加页面',
+        preview: '预览',
+      },
+    },
+  },
   about: {
     changeLog: '更新日志',
     updateNow: '现在更新',
@@ -200,6 +225,11 @@ const translation = {
     emptyTip: ' 数据集尚未关联，请前往应用程序或插件完成关联。',
     viewDoc: '查看文档',
     relatedApp: '个关联应用',
+  },
+  voiceInput: {
+    speaking: '现在讲...',
+    converting: '正在转换为文本...',
+    notAllow: '麦克风未授权',
   },
 }
 

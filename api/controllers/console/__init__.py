@@ -9,16 +9,16 @@ api = ExternalApi(bp)
 from . import setup, version, apikey, admin
 
 # Import app controllers
-from .app import app, site, completion, model_config, statistic, conversation, message, generator
+from .app import app, site, completion, model_config, statistic, conversation, message, generator, audio
 
 # Import auth controllers
-from .auth import login, oauth
+from .auth import login, oauth, data_source_oauth
 
 # Import datasets controllers
-from .datasets import datasets, datasets_document, datasets_segments, file, hit_testing
+from .datasets import datasets, datasets_document, datasets_segments, file, hit_testing, data_source
 
 # Import workspace controllers
 from .workspace import workspace, members, providers, account
 
 # Import explore controllers
-from .explore import installed_app, recommended_app, completion, conversation, message, parameter, saved_message
+from .explore import installed_app, recommended_app, completion, conversation, message, parameter, saved_message, audio
