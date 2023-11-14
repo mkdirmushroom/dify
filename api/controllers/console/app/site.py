@@ -1,31 +1,17 @@
 # -*- coding:utf-8 -*-
-from flask_login import login_required, current_user
-from flask_restful import Resource, reqparse, fields, marshal_with
+from flask_login import current_user
+from libs.login import login_required
+from flask_restful import Resource, reqparse, marshal_with
 from werkzeug.exceptions import NotFound, Forbidden
 
 from controllers.console import api
 from controllers.console.app import _get_app
 from controllers.console.setup import setup_required
 from controllers.console.wraps import account_initialization_required
+from fields.app_fields import app_site_fields
 from libs.helper import supported_language
 from extensions.ext_database import db
 from models.model import Site
-
-app_site_fields = {
-    'app_id': fields.String,
-    'access_token': fields.String(attribute='code'),
-    'code': fields.String,
-    'title': fields.String,
-    'icon': fields.String,
-    'icon_background': fields.String,
-    'description': fields.String,
-    'default_language': fields.String,
-    'customize_domain': fields.String,
-    'copyright': fields.String,
-    'privacy_policy': fields.String,
-    'customize_token_strategy': fields.String,
-    'prompt_public': fields.Boolean
-}
 
 
 def parse_app_site_args():
@@ -79,6 +65,13 @@ class AppSite(Resource):
             value = args.get(attr_name)
             if value is not None:
                 setattr(site, attr_name, value)
+
+                if attr_name == 'title':
+                    app_model.name = value
+                elif attr_name == 'icon':
+                    app_model.icon = value
+                elif attr_name == 'icon_background':
+                    app_model.icon_background = value
 
         db.session.commit()
 

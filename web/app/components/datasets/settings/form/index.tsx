@@ -1,15 +1,23 @@
 'use client'
 import { useEffect, useState } from 'react'
-import useSWR from 'swr'
+import type { Dispatch } from 'react'
 import { useContext } from 'use-context-selector'
 import { BookOpenIcon } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
+import cn from 'classnames'
+import { useSWRConfig } from 'swr'
+import { unstable_serialize } from 'swr/infinite'
 import PermissionsRadio from '../permissions-radio'
 import IndexMethodRadio from '../index-method-radio'
 import { ToastContext } from '@/app/components/base/toast'
 import Button from '@/app/components/base/button'
-import { fetchDataDetail, updateDatasetSetting } from '@/service/datasets'
-import type { DataSet } from '@/models/datasets'
+import { updateDatasetSetting } from '@/service/datasets'
+import type { DataSet, DataSetListResponse } from '@/models/datasets'
+import ModelSelector from '@/app/components/header/account-setting/model-page/model-selector'
+import type { ProviderEnum } from '@/app/components/header/account-setting/model-page/declarations'
+import { ModelType } from '@/app/components/header/account-setting/model-page/declarations'
+import DatasetDetailContext from '@/context/dataset-detail'
+import { useModalContext } from '@/context/modal-context'
 
 const rowClass = `
   flex justify-between py-4
@@ -20,28 +28,29 @@ const labelClass = `
 const inputClass = `
   w-[480px] px-3 bg-gray-100 text-sm text-gray-800 rounded-lg outline-none appearance-none
 `
-const useInitialValue = (depend: any, dispatch: any) => {
+const useInitialValue: <T>(depend: T, dispatch: Dispatch<T>) => void = (depend, dispatch) => {
   useEffect(() => {
     dispatch(depend)
   }, [depend])
 }
 
-type Props = {
-  datasetId: string
+const getKey = (pageIndex: number, previousPageData: DataSetListResponse) => {
+  if (!pageIndex || previousPageData.has_more)
+    return { url: 'datasets', params: { page: pageIndex + 1, limit: 30 } }
+  return null
 }
 
-const Form = ({
-  datasetId,
-}: Props) => {
+const Form = () => {
   const { t } = useTranslation()
   const { notify } = useContext(ToastContext)
-  const { data: currentDataset, mutate: mutateDatasets } = useSWR(datasetId, fetchDataDetail)
+  const { mutate } = useSWRConfig()
+  const { dataset: currentDataset, mutateDatasetRes: mutateDatasets } = useContext(DatasetDetailContext)
+  const { setShowAccountSettingModal } = useModalContext()
   const [loading, setLoading] = useState(false)
   const [name, setName] = useState(currentDataset?.name ?? '')
   const [description, setDescription] = useState(currentDataset?.description ?? '')
   const [permission, setPermission] = useState(currentDataset?.permission)
   const [indexMethod, setIndexMethod] = useState(currentDataset?.indexing_technique)
-
   const handleSave = async () => {
     if (loading)
       return
@@ -61,10 +70,13 @@ const Form = ({
         },
       })
       notify({ type: 'success', message: t('common.actionMsg.modifiedSuccessfully') })
-      await mutateDatasets()
+      if (mutateDatasets) {
+        await mutateDatasets()
+        mutate(unstable_serialize(getKey))
+      }
     }
     catch (e) {
-      notify({ type: 'error', message: t('common.actionMsg.modificationFailed') })
+      notify({ type: 'error', message: t('common.actionMsg.modifiedUnsuccessfully') })
     }
     finally {
       setLoading(false)
@@ -83,7 +95,8 @@ const Form = ({
           <div>{t('datasetSettings.form.name')}</div>
         </div>
         <input
-          className={inputClass}
+          disabled={!currentDataset?.embedding_available}
+          className={cn(inputClass, !currentDataset?.embedding_available && 'opacity-60')}
           value={name}
           onChange={e => setName(e.target.value)}
         />
@@ -94,7 +107,8 @@ const Form = ({
         </div>
         <div>
           <textarea
-            className={`${inputClass} block mb-2 h-[120px] py-2 resize-none`}
+            disabled={!currentDataset?.embedding_available}
+            className={cn(`${inputClass} block mb-2 h-[120px] py-2 resize-none`, !currentDataset?.embedding_available && 'opacity-60')}
             placeholder={t('datasetSettings.form.descPlaceholder') || ''}
             value={description}
             onChange={e => setDescription(e.target.value)}
@@ -111,35 +125,67 @@ const Form = ({
         </div>
         <div className='w-[480px]'>
           <PermissionsRadio
+            disable={!currentDataset?.embedding_available}
             value={permission}
             onChange={v => setPermission(v)}
           />
         </div>
       </div>
-      <div className='w-full h-0 border-b-[0.5px] border-b-gray-200 my-2' />
-      <div className={rowClass}>
-        <div className={labelClass}>
-          <div>{t('datasetSettings.form.indexMethod')}</div>
+      {currentDataset && currentDataset.indexing_technique && (
+        <>
+          <div className='w-full h-0 border-b-[0.5px] border-b-gray-200 my-2' />
+          <div className={rowClass}>
+            <div className={labelClass}>
+              <div>{t('datasetSettings.form.indexMethod')}</div>
+            </div>
+            <div className='w-[480px]'>
+              <IndexMethodRadio
+                disable={!currentDataset?.embedding_available}
+                value={indexMethod}
+                onChange={v => setIndexMethod(v)}
+              />
+            </div>
+          </div>
+        </>
+      )}
+      {currentDataset && currentDataset.indexing_technique === 'high_quality' && (
+        <div className={rowClass}>
+          <div className={labelClass}>
+            <div>{t('datasetSettings.form.embeddingModel')}</div>
+          </div>
+          <div className='w-[480px]'>
+            <div className='w-full h-9 rounded-lg bg-gray-100 opacity-60'>
+              <ModelSelector
+                readonly
+                value={{
+                  providerName: currentDataset.embedding_model_provider as ProviderEnum,
+                  modelName: currentDataset.embedding_model,
+                }}
+                modelType={ModelType.embeddings}
+                onChange={() => {}}
+              />
+            </div>
+            <div className='mt-2 w-full text-xs leading-6 text-gray-500'>
+              {t('datasetSettings.form.embeddingModelTip')}
+              <span className='text-[#155eef] cursor-pointer' onClick={() => setShowAccountSettingModal({ payload: 'provider' })}>{t('datasetSettings.form.embeddingModelTipLink')}</span>
+            </div>
+          </div>
         </div>
-        <div className='w-[480px]'>
-          <IndexMethodRadio
-            value={indexMethod}
-            onChange={v => setIndexMethod(v)}
-          />
+      )}
+      {currentDataset?.embedding_available && (
+        <div className={rowClass}>
+          <div className={labelClass} />
+          <div className='w-[480px]'>
+            <Button
+              className='min-w-24 text-sm'
+              type='primary'
+              onClick={handleSave}
+            >
+              {t('datasetSettings.form.save')}
+            </Button>
+          </div>
         </div>
-      </div>
-      <div className={rowClass}>
-        <div className={labelClass} />
-        <div className='w-[480px]'>
-          <Button
-            className='min-w-24 text-sm'
-            type='primary'
-            onClick={handleSave}
-          >
-            {t('datasetSettings.form.save')}
-          </Button>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

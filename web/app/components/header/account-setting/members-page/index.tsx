@@ -1,6 +1,5 @@
 'use client'
 import { useState } from 'react'
-import cn from 'classnames'
 import useSWR from 'swr'
 import dayjs from 'dayjs'
 import 'dayjs/locale/zh-cn'
@@ -8,7 +7,6 @@ import relativeTime from 'dayjs/plugin/relativeTime'
 import { useContext } from 'use-context-selector'
 import { UserPlusIcon } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
-import s from './index.module.css'
 import InviteModal from './invite-modal'
 import InvitedModal from './invited-modal'
 import Operation from './operation'
@@ -16,9 +14,10 @@ import { fetchMembers } from '@/service/common'
 import I18n from '@/context/i18n'
 import { useAppContext } from '@/context/app-context'
 import Avatar from '@/app/components/base/avatar'
-import { useWorkspacesContext } from '@/context/workspace-context'
+import type { InvitationResult } from '@/models/common'
 
 dayjs.extend(relativeTime)
+
 const MembersPage = () => {
   const { t } = useTranslation()
   const RoleMap = {
@@ -27,29 +26,27 @@ const MembersPage = () => {
     normal: t('common.members.normal'),
   }
   const { locale } = useContext(I18n)
-  const { userProfile } = useAppContext()
+  const { userProfile, currentWorkspace, isCurrentWorkspaceManager } = useAppContext()
   const { data, mutate } = useSWR({ url: '/workspaces/current/members' }, fetchMembers)
   const [inviteModalVisible, setInviteModalVisible] = useState(false)
+  const [invitationResults, setInvitationResults] = useState<InvitationResult[]>([])
   const [invitedModalVisible, setInvitedModalVisible] = useState(false)
   const accounts = data?.accounts || []
   const owner = accounts.filter(account => account.role === 'owner')?.[0]?.email === userProfile.email
-  const { workspaces } = useWorkspacesContext()
-  const currentWrokspace = workspaces.filter(item => item.current)?.[0]
 
   return (
     <>
       <div>
         <div className='flex items-center mb-4 p-3 bg-gray-50 rounded-2xl'>
-          <div className={cn(s['logo-icon'], 'shrink-0')}></div>
           <div className='grow mx-2'>
-            <div className='text-sm font-medium text-gray-900'>{currentWrokspace?.name}</div>
+            <div className='text-sm font-medium text-gray-900'>{currentWorkspace?.name}</div>
             <div className='text-xs text-gray-500'>{t('common.userProfile.workspace')}</div>
           </div>
-          <div className='
-            shrink-0 flex items-center py-[7px] px-3 border-[0.5px] border-gray-200
+          <div className={
+            `shrink-0 flex items-center py-[7px] px-3 border-[0.5px] border-gray-200
             text-[13px] font-medium text-primary-600 bg-white
-            shadow-[0_1px_2px_rgba(16,24,40,0.05)] rounded-lg cursor-pointer
-          ' onClick={() => setInviteModalVisible(true)}>
+            shadow-xs rounded-lg ${isCurrentWorkspaceManager ? 'cursor-pointer' : 'grayscale opacity-50 cursor-default'}`
+          } onClick={() => isCurrentWorkspaceManager && setInviteModalVisible(true)}>
             <UserPlusIcon className='w-4 h-4 mr-2 ' />
             {t('common.members.invite')}
           </div>
@@ -79,7 +76,7 @@ const MembersPage = () => {
                   <div className='shrink-0 w-[96px] flex items-center'>
                     {
                       (owner && account.role !== 'owner')
-                        ? <Operation member={account} onOperate={() => mutate()} />
+                        ? <Operation member={account} onOperate={mutate} />
                         : <div className='px-3 text-[13px] text-gray-700'>{RoleMap[account.role] || RoleMap.normal}</div>
                     }
                   </div>
@@ -93,8 +90,9 @@ const MembersPage = () => {
         inviteModalVisible && (
           <InviteModal
             onCancel={() => setInviteModalVisible(false)}
-            onSend={() => {
+            onSend={(invitationResults) => {
               setInvitedModalVisible(true)
+              setInvitationResults(invitationResults)
               mutate()
             }}
           />
@@ -103,6 +101,7 @@ const MembersPage = () => {
       {
         invitedModalVisible && (
           <InvitedModal
+            invitationResults={invitationResults}
             onCancel={() => setInvitedModalVisible(false)}
           />
         )

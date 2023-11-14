@@ -1,12 +1,15 @@
 'use client'
 import { useTranslation } from 'react-i18next'
-import { XMarkIcon } from '@heroicons/react/24/outline'
 import classNames from 'classnames'
 import Link from 'next/link'
+import { useContext } from 'use-context-selector'
 import s from './index.module.css'
 import Modal from '@/app/components/base/modal'
+import { XClose } from '@/app/components/base/icons/src/vender/line/general'
 import type { LangGeniusVersionResponse } from '@/models/common'
 import { IS_CE_EDITION } from '@/config'
+import I18n from '@/context/i18n'
+import LogoSite from '@/app/components/base/logo/logo-site'
 
 type IAccountSettingProps = {
   langeniusVersionInfo: LangGeniusVersionResponse
@@ -21,6 +24,7 @@ export default function AccountAbout({
   onCancel,
 }: IAccountSettingProps) {
   const { t } = useTranslation()
+  const { locale } = useContext(I18n)
   const isLatest = langeniusVersionInfo.current_version === langeniusVersionInfo.latest_version
 
   return (
@@ -29,17 +33,12 @@ export default function AccountAbout({
       onClose={() => { }}
       className={s.modal}
     >
-      <div className='relative'>
-        <XMarkIcon className='absolute top-0 -right-2 w-4 h-4 cursor-pointer' onClick={onCancel} />
+      <div className='relative pt-4'>
+        <div className='absolute -top-2 -right-4 flex justify-center items-center w-8 h-8 cursor-pointer' onClick={onCancel}>
+          <XClose className='w-4 h-4 text-gray-500' />
+        </div>
         <div>
-          <div className={classNames(
-            s['logo-icon'],
-            'mx-auto mb-3 w-12 h-12 bg-white rounded border border-gray-200',
-          )} />
-          <div className={classNames(
-            s['logo-text'],
-            'mx-auto mb-2',
-          )} />
+          <LogoSite className='mx-auto mb-2' />
           <div className='mb-3 text-center text-xs font-normal text-gray-500'>Version {langeniusVersionInfo?.current_version}</div>
           <div className='mb-4 text-center text-xs font-normal text-gray-700'>
             <div>© 2023 LangGenius, Inc., Contributors.</div>
@@ -48,14 +47,14 @@ export default function AccountAbout({
                 IS_CE_EDITION
                   ? <Link href={'https://github.com/mkdirmushroom/dify/blob/main/LICENSE'} target='_blank'>Open Source License</Link>
                   : <>
-                    <Link href={'https://docs.dify.ai/user-agreement/privacy-policy'} target='_blank'>Privacy Policy</Link>,
-                    <Link href={'https://docs.dify.ai/user-agreement/terms-of-service'} target='_blank'>Terms of Service</Link>
+                    <Link href={locale === 'en' ? 'https://docs.dify.ai/user-agreement/privacy-policy' : 'https://docs.dify.ai/v/zh-hans/yong-hu-xie-yi/yin-si-xie-yi'} target='_blank'>Privacy Policy</Link>,
+                    <Link href={locale === 'en' ? 'https://docs.dify.ai/user-agreement/terms-of-service' : 'https://docs.dify.ai/v/zh-hans/yong-hu-xie-yi/fu-wu-xie-yi'} target='_blank'>Terms of Service</Link>
                   </>
               }
             </div>
           </div>
         </div>
-        <div className='mb-4 h-0 border-[0.5px] border-gray-200' />
+        <div className='mb-4 -mx-8 h-[0.5px] bg-gray-200' />
         <div className='flex justify-between items-center'>
           <div className='text-xs font-medium text-gray-800'>
             {

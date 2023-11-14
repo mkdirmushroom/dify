@@ -2,14 +2,14 @@
 
 import { useEffect, useRef } from 'react'
 import useSWRInfinite from 'swr/infinite'
-import { debounce } from 'lodash-es'
 import { useTranslation } from 'react-i18next'
 import AppCard from './AppCard'
 import NewAppCard from './NewAppCard'
 import type { AppListResponse } from '@/models/app'
 import { fetchAppList } from '@/service/apps'
-import { useSelector } from '@/context/app-context'
+import { useAppContext } from '@/context/app-context'
 import { NEED_REFRESH_APP_LIST_KEY } from '@/config'
+import { CheckModal } from '@/hooks/use-pay'
 
 const getKey = (pageIndex: number, previousPageData: AppListResponse) => {
   if (!pageIndex || previousPageData.has_more)
@@ -19,10 +19,9 @@ const getKey = (pageIndex: number, previousPageData: AppListResponse) => {
 
 const Apps = () => {
   const { t } = useTranslation()
+  const { isCurrentWorkspaceManager } = useAppContext()
   const { data, isLoading, setSize, mutate } = useSWRInfinite(getKey, fetchAppList, { revalidateFirstPage: false })
-  const loadingStateRef = useRef(false)
-  const pageContainerRef = useSelector(state => state.pageContainerRef)
-  const anchorRef = useRef<HTMLAnchorElement>(null)
+  const anchorRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     document.title = `${t('app.title')} -  Dify`
@@ -30,33 +29,31 @@ const Apps = () => {
       localStorage.removeItem(NEED_REFRESH_APP_LIST_KEY)
       mutate()
     }
-  }, [])
+  }, [mutate, t])
 
   useEffect(() => {
-    loadingStateRef.current = isLoading
-  }, [isLoading])
-
-  useEffect(() => {
-    const onScroll = debounce(() => {
-      if (!loadingStateRef.current) {
-        const { scrollTop, clientHeight } = pageContainerRef.current!
-        const anchorOffset = anchorRef.current!.offsetTop
-        if (anchorOffset - scrollTop - clientHeight < 100)
+    let observer: IntersectionObserver | undefined
+    if (anchorRef.current) {
+      observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting)
           setSize(size => size + 1)
-      }
-    }, 50)
-
-    pageContainerRef.current?.addEventListener('scroll', onScroll)
-    return () => pageContainerRef.current?.removeEventListener('scroll', onScroll)
-  }, [])
+      }, { rootMargin: '100px' })
+      observer.observe(anchorRef.current)
+    }
+    return () => observer?.disconnect()
+  }, [isLoading, setSize, anchorRef, mutate])
 
   return (
-    <nav className='grid content-start grid-cols-1 gap-4 px-12 pt-8 sm:grid-cols-2 lg:grid-cols-4 grow shrink-0'>
+    <><nav className='grid content-start grid-cols-1 gap-4 px-12 pt-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 grow shrink-0'>
+      { isCurrentWorkspaceManager
+      && <NewAppCard onSuccess={mutate} />}
       {data?.map(({ data: apps }) => apps.map(app => (
-        <AppCard key={app.id} app={app} onDelete={mutate} />
+        <AppCard key={app.id} app={app} onRefresh={mutate} />
       )))}
-      <NewAppCard ref={anchorRef} onSuccess={mutate} />
+      <CheckModal />
     </nav>
+    <div ref={anchorRef} className='h-0'> </div>
+    </>
   )
 }
 

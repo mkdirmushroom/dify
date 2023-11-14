@@ -1,34 +1,37 @@
 # -*- coding:utf-8 -*-
 import os
-from datetime import datetime
+
+from werkzeug.exceptions import Unauthorized
 
 if not os.environ.get("DEBUG") or os.environ.get("DEBUG").lower() != 'true':
     from gevent import monkey
     monkey.patch_all()
+    if os.environ.get("VECTOR_STORE") == 'milvus':
+        import grpc.experimental.gevent
+        grpc.experimental.gevent.init_gevent()
 
 import logging
 import json
 import threading
 
-from flask import Flask, request, Response, session
-import flask_login
+from flask import Flask, request, Response
 from flask_cors import CORS
 
-from extensions import ext_session, ext_celery, ext_sentry, ext_redis, ext_login, ext_migrate, \
-    ext_database, ext_storage
+from core.model_providers.providers import hosted
+from extensions import ext_celery, ext_sentry, ext_redis, ext_login, ext_migrate, \
+    ext_database, ext_storage, ext_mail, ext_stripe, ext_code_based_extension
 from extensions.ext_database import db
 from extensions.ext_login import login_manager
 
 # DO NOT REMOVE BELOW
-from models import model, account, dataset, web, task, source
+from models import model, account, dataset, web, task, source, tool
 from events import event_handlers
 # DO NOT REMOVE ABOVE
 
-import core
 from config import Config, CloudEditionConfig
 from commands import register_commands
-from models.account import TenantAccountJoin
-from models.model import Account, EndUser, App
+from services.account_service import AccountService
+from libs.passport import PassportService
 
 import warnings
 warnings.simplefilter("ignore", ResourceWarning)
@@ -68,7 +71,7 @@ def create_app(test_config=None) -> Flask:
     register_blueprints(app)
     register_commands(app)
 
-    core.init_app(app)
+    hosted.init_app(app)
 
     return app
 
@@ -76,63 +79,38 @@ def create_app(test_config=None) -> Flask:
 def initialize_extensions(app):
     # Since the application instance is now created, pass it to each Flask
     # extension instance to bind it to the Flask application instance (app)
+    ext_code_based_extension.init()
     ext_database.init_app(app)
     ext_migrate.init(app, db)
     ext_redis.init_app(app)
     ext_storage.init_app(app)
     ext_celery.init_app(app)
-    ext_session.init_app(app)
     ext_login.init_app(app)
+    ext_mail.init_app(app)
     ext_sentry.init_app(app)
+    ext_stripe.init_app(app)
 
 
 # Flask-Login configuration
-@login_manager.user_loader
-def load_user(user_id):
-    """Load user based on the user_id."""
+@login_manager.request_loader
+def load_user_from_request(request_from_flask_login):
+    """Load user based on the request."""
     if request.blueprint == 'console':
         # Check if the user_id contains a dot, indicating the old format
-        if '.' in user_id:
-            tenant_id, account_id = user_id.split('.')
-        else:
-            account_id = user_id
+        auth_header = request.headers.get('Authorization', '')
+        if ' ' not in auth_header:
+            raise Unauthorized('Invalid Authorization header format. Expected \'Bearer <api-key>\' format.')
+        auth_scheme, auth_token = auth_header.split(None, 1)
+        auth_scheme = auth_scheme.lower()
+        if auth_scheme != 'bearer':
+            raise Unauthorized('Invalid Authorization header format. Expected \'Bearer <api-key>\' format.')
+        
+        decoded = PassportService().verify(auth_token)
+        user_id = decoded.get('user_id')
 
-        account = db.session.query(Account).filter(Account.id == account_id).first()
-
-        if account:
-            workspace_id = session.get('workspace_id')
-            if workspace_id:
-                tenant_account_join = db.session.query(TenantAccountJoin).filter(
-                    TenantAccountJoin.account_id == account.id,
-                    TenantAccountJoin.tenant_id == workspace_id
-                ).first()
-
-                if not tenant_account_join:
-                    tenant_account_join = db.session.query(TenantAccountJoin).filter(
-                        TenantAccountJoin.account_id == account.id).first()
-
-                    if tenant_account_join:
-                        account.current_tenant_id = tenant_account_join.tenant_id
-                        session['workspace_id'] = account.current_tenant_id
-                else:
-                    account.current_tenant_id = workspace_id
-            else:
-                tenant_account_join = db.session.query(TenantAccountJoin).filter(
-                    TenantAccountJoin.account_id == account.id).first()
-                if tenant_account_join:
-                    account.current_tenant_id = tenant_account_join.tenant_id
-                    session['workspace_id'] = account.current_tenant_id
-
-            account.last_active_at = datetime.utcnow()
-            db.session.commit()
-
-            # Log in the user with the updated user_id
-            flask_login.login_user(account, remember=True)
-
-        return account
+        return AccountService.load_user(user_id)
     else:
         return None
-
 
 @login_manager.unauthorized_handler
 def unauthorized_handler():
@@ -148,6 +126,7 @@ def register_blueprints(app):
     from controllers.service_api import bp as service_api_bp
     from controllers.web import bp as web_bp
     from controllers.console import bp as console_app_bp
+    from controllers.files import bp as files_bp
 
 
     CORS(service_api_bp,
@@ -164,7 +143,7 @@ def register_blueprints(app):
          resources={
              r"/*": {"origins": app.config['WEB_API_CORS_ALLOW_ORIGINS']}},
          supports_credentials=True,
-         allow_headers=['Content-Type', 'Authorization'],
+         allow_headers=['Content-Type', 'Authorization', 'X-App-Code'],
          methods=['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH'],
          expose_headers=['X-Version', 'X-Env']
          )
@@ -182,6 +161,12 @@ def register_blueprints(app):
 
     app.register_blueprint(console_app_bp)
 
+    CORS(files_bp,
+         allow_headers=['Content-Type'],
+         methods=['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS', 'PATCH']
+         )
+    app.register_blueprint(files_bp)
+
 
 # create app
 app = create_app()
@@ -195,6 +180,7 @@ if app.config['TESTING']:
 @app.after_request
 def after_request(response):
     """Add Version headers to the response."""
+    response.set_cookie('remember_token', '', expires=0)
     response.headers.add('X-Version', app.config['CURRENT_VERSION'])
     response.headers.add('X-Env', app.config['DEPLOY_ENV'])
     return response
@@ -228,6 +214,19 @@ def threads():
     return {
         'thread_num': num_threads,
         'threads': thread_list
+    }
+
+
+@app.route('/db-pool-stat')
+def pool_stat():
+    engine = db.engine
+    return {
+        'pool_size': engine.pool.size(),
+        'checked_in_connections': engine.pool.checkedin(),
+        'checked_out_connections': engine.pool.checkedout(),
+        'overflow_connections': engine.pool.overflow(),
+        'connection_timeout': engine.pool.timeout(),
+        'recycle_time': db.engine.pool._recycle
     }
 
 

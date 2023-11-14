@@ -5,7 +5,7 @@ from typing import Generator, Union
 
 import flask_login
 from flask import Response, stream_with_context
-from flask_login import login_required
+from libs.login import login_required
 from werkzeug.exceptions import InternalServerError, NotFound
 
 import services
@@ -17,7 +17,7 @@ from controllers.console.app.error import ConversationCompletedError, AppUnavail
 from controllers.console.setup import setup_required
 from controllers.console.wraps import account_initialization_required
 from core.conversation_message_task import PubHandler
-from core.llm.error import LLMBadRequestError, LLMAPIUnavailableError, LLMAuthorizationError, LLMAPIConnectionError, \
+from core.model_providers.error import LLMBadRequestError, LLMAPIUnavailableError, LLMAuthorizationError, LLMAPIConnectionError, \
     LLMRateLimitError, ProviderTokenNotInitError, QuotaExceededError, ModelCurrentlyNotSupportError
 from libs.helper import uuid_value
 from flask_restful import Resource, reqparse
@@ -39,9 +39,15 @@ class CompletionMessageApi(Resource):
 
         parser = reqparse.RequestParser()
         parser.add_argument('inputs', type=dict, required=True, location='json')
-        parser.add_argument('query', type=str, location='json')
+        parser.add_argument('query', type=str, location='json', default='')
+        parser.add_argument('files', type=list, required=False, location='json')
         parser.add_argument('model_config', type=dict, required=True, location='json')
+        parser.add_argument('response_mode', type=str, choices=['blocking', 'streaming'], location='json')
+        parser.add_argument('retriever_from', type=str, required=False, default='dev', location='json')
         args = parser.parse_args()
+
+        streaming = args['response_mode'] != 'blocking'
+        args['auto_generate_name'] = False
 
         account = flask_login.current_user
 
@@ -51,7 +57,7 @@ class CompletionMessageApi(Resource):
                 user=account,
                 args=args,
                 from_source='console',
-                streaming=True,
+                streaming=streaming,
                 is_model_config_override=True
             )
 
@@ -63,8 +69,8 @@ class CompletionMessageApi(Resource):
         except services.errors.app_model_config.AppModelConfigBrokenError:
             logging.exception("App model config broken.")
             raise AppUnavailableError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -109,9 +115,15 @@ class ChatMessageApi(Resource):
         parser = reqparse.RequestParser()
         parser.add_argument('inputs', type=dict, required=True, location='json')
         parser.add_argument('query', type=str, required=True, location='json')
+        parser.add_argument('files', type=list, required=False, location='json')
         parser.add_argument('model_config', type=dict, required=True, location='json')
         parser.add_argument('conversation_id', type=uuid_value, location='json')
+        parser.add_argument('response_mode', type=str, choices=['blocking', 'streaming'], location='json')
+        parser.add_argument('retriever_from', type=str, required=False, default='dev', location='json')
         args = parser.parse_args()
+
+        streaming = args['response_mode'] != 'blocking'
+        args['auto_generate_name'] = False
 
         account = flask_login.current_user
 
@@ -121,7 +133,7 @@ class ChatMessageApi(Resource):
                 user=account,
                 args=args,
                 from_source='console',
-                streaming=True,
+                streaming=streaming,
                 is_model_config_override=True
             )
 
@@ -133,8 +145,8 @@ class ChatMessageApi(Resource):
         except services.errors.app_model_config.AppModelConfigBrokenError:
             logging.exception("App model config broken.")
             raise AppUnavailableError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -164,8 +176,8 @@ def compact_response(response: Union[dict | Generator]) -> Response:
             except services.errors.app_model_config.AppModelConfigBrokenError:
                 logging.exception("App model config broken.")
                 yield "data: " + json.dumps(api.handle_error(AppUnavailableError()).get_json()) + "\n\n"
-            except ProviderTokenNotInitError:
-                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError()).get_json()) + "\n\n"
+            except ProviderTokenNotInitError as ex:
+                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError(ex.description)).get_json()) + "\n\n"
             except QuotaExceededError:
                 yield "data: " + json.dumps(api.handle_error(ProviderQuotaExceededError()).get_json()) + "\n\n"
             except ModelCurrentlyNotSupportError:

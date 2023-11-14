@@ -1,7 +1,8 @@
 import logging
 
-from flask_login import login_required, current_user
-from flask_restful import Resource, reqparse, marshal, fields
+from flask_login import current_user
+from libs.login import login_required
+from flask_restful import Resource, reqparse, marshal
 from werkzeug.exceptions import InternalServerError, NotFound, Forbidden
 
 import services
@@ -11,47 +12,11 @@ from controllers.console.app.error import ProviderNotInitializeError, ProviderQu
 from controllers.console.datasets.error import HighQualityDatasetOnlyError, DatasetNotInitializedError
 from controllers.console.setup import setup_required
 from controllers.console.wraps import account_initialization_required
-from core.llm.error import ProviderTokenNotInitError, QuotaExceededError, ModelCurrentlyNotSupportError
-from libs.helper import TimestampField
+from core.model_providers.error import ProviderTokenNotInitError, QuotaExceededError, ModelCurrentlyNotSupportError, \
+    LLMBadRequestError
+from fields.hit_testing_fields import hit_testing_record_fields
 from services.dataset_service import DatasetService
 from services.hit_testing_service import HitTestingService
-
-document_fields = {
-    'id': fields.String,
-    'data_source_type': fields.String,
-    'name': fields.String,
-    'doc_type': fields.String,
-}
-
-segment_fields = {
-    'id': fields.String,
-    'position': fields.Integer,
-    'document_id': fields.String,
-    'content': fields.String,
-    'word_count': fields.Integer,
-    'tokens': fields.Integer,
-    'keywords': fields.List(fields.String),
-    'index_node_id': fields.String,
-    'index_node_hash': fields.String,
-    'hit_count': fields.Integer,
-    'enabled': fields.Boolean,
-    'disabled_at': TimestampField,
-    'disabled_by': fields.String,
-    'status': fields.String,
-    'created_by': fields.String,
-    'created_at': TimestampField,
-    'indexing_at': TimestampField,
-    'completed_at': TimestampField,
-    'error': fields.String,
-    'stopped_at': TimestampField,
-    'document': fields.Nested(document_fields),
-}
-
-hit_testing_record_fields = {
-    'segment': fields.Nested(segment_fields),
-    'score': fields.Float,
-    'tsne_position': fields.Raw
-}
 
 
 class HitTestingApi(Resource):
@@ -95,12 +60,18 @@ class HitTestingApi(Resource):
             return {"query": response['query'], 'records': marshal(response['records'], hit_testing_record_fields)}
         except services.errors.index.IndexNotInitializedError:
             raise DatasetNotInitializedError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
             raise ProviderModelCurrentlyNotSupportError()
+        except LLMBadRequestError:
+            raise ProviderNotInitializeError(
+                f"No Embedding Model available. Please configure a valid provider "
+                f"in the Settings -> Model Provider.")
+        except ValueError as e:
+            raise ValueError(str(e))
         except Exception as e:
             logging.exception("Hit testing failed.")
             raise InternalServerError(str(e))

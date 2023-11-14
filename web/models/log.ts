@@ -1,3 +1,5 @@
+import type { VisionFile } from '@/types/app'
+
 // Log type contains key:string conversation_id:string created_at:string quesiton:string answer:string
 export type Conversation = {
   id: string
@@ -27,6 +29,12 @@ export type CompletionParamsType = {
   stop: string[]
   presence_penalty: number
   frequency_penalty: number
+}
+
+export type LogModelConfig = {
+  name: string
+  provider: string
+  completion_params: CompletionParamsType
 }
 
 export type ModelConfigDetail = {
@@ -72,6 +80,7 @@ export type MessageContent = {
     from_source?: 'admin' | 'user'
     from_end_user_id?: string
   }>
+  message_files: VisionFile[]
 }
 
 export type CompletionConversationGeneralDetail = {
@@ -79,6 +88,7 @@ export type CompletionConversationGeneralDetail = {
   status: 'normal' | 'finished'
   from_source: 'api' | 'console'
   from_end_user_id: string
+  from_end_user_session_id: string
   from_account_id: string
   read_at: Date
   created_at: number
@@ -154,6 +164,7 @@ export type ChatConversationFullDetailResponse = Omit<CompletionConversationGene
     provider: string
     model_id: string
     configs: ModelConfigDetail
+    model: LogModelConfig
   }
 }
 

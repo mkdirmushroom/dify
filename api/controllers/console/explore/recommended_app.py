@@ -1,5 +1,6 @@
 # -*- coding:utf-8 -*-
-from flask_login import login_required, current_user
+from flask_login import current_user
+from libs.login import login_required
 from flask_restful import Resource, fields, marshal_with
 from sqlalchemy import and_
 

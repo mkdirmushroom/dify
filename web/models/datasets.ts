@@ -22,16 +22,23 @@ export type DataSet = {
   app_count: number
   document_count: number
   word_count: number
+  embedding_model: string
+  embedding_model_provider: string
+  embedding_available: boolean
 }
 
-export type File = {
-  id: string
-  name: string
-  size: number
-  extension: string
-  mime_type: string
-  created_by: string
-  created_at: number
+export type CustomFile = File & {
+  id?: string
+  extension?: string
+  mime_type?: string
+  created_by?: string
+  created_at?: number
+}
+
+export type FileItem = {
+  fileID: string
+  file: CustomFile
+  progress: number
 }
 
 export type DataSetListResponse = {
@@ -42,12 +49,18 @@ export type DataSetListResponse = {
   total: number
 }
 
+export type QA = {
+  question: string
+  answer: string
+}
+
 export type IndexingEstimateResponse = {
   tokens: number
   total_price: number
   currency: string
   total_segments: number
   preview: string[]
+  qa_preview?: QA[]
 }
 
 export type FileIndexingEstimateResponse = {
@@ -130,6 +143,7 @@ export type DataSourceInfo = {
     created_by: string
     extension: string
   }
+  notion_page_icon?: string
 }
 
 export type InitialDocumentDetail = {
@@ -148,6 +162,7 @@ export type InitialDocumentDetail = {
   display_status: DocumentDisplayStatus
   completed_segments?: number
   total_segments?: number
+  doc_form: 'text_model' | 'qa_model'
 }
 
 export type SimpleDocumentDetail = InitialDocumentDetail & {
@@ -168,11 +183,20 @@ export type DocumentListResponse = {
   limit: number
 }
 
-export type CreateDocumentReq = {
+export type DocumentReq = {
   original_document_id?: string
   indexing_technique?: string
-  data_source: DataSource
+  doc_form: 'text_model' | 'qa_model'
+  doc_language: string
   process_rule: ProcessRule
+}
+
+export type CreateDocumentReq = DocumentReq & {
+  data_source: DataSource
+}
+
+export type IndexingEstimateParams = DocumentReq & Partial<DataSource> & {
+  dataset_id: string
 }
 
 export type DataSource = {
@@ -225,7 +249,7 @@ export type FullDocumentDetail = SimpleDocumentDetail & {
   archived_reason: 'rule_modified' | 're_upload'
   archived_by: string
   archived_at: number
-  doc_type?: DocType | null
+  doc_type?: DocType | null | 'others'
   doc_metadata?: DocMetadata | null
   segment_count: number
   [key: string]: any
@@ -293,6 +317,7 @@ export type SegmentDetailModel = {
   completed_at: number
   error: string | null
   stopped_at: number
+  answer?: string
 }
 
 export type SegmentsResponse = {
@@ -369,4 +394,15 @@ export type RelatedApp = {
 export type RelatedAppResponse = {
   data: Array<RelatedApp>
   total: number
+}
+
+export type SegmentUpdator = {
+  content: string
+  answer?: string
+  keywords?: string[]
+}
+
+export enum DocForm {
+  TEXT = 'text_model',
+  QA = 'qa_model',
 }

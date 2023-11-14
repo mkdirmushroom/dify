@@ -27,6 +27,8 @@ const translation = {
       title: 'Delete conversation',
       content: 'Are you sure you want to delete this conversation?',
     },
+    tryToSolve: 'Try to solve',
+    temporarySystemIssue: 'Sorry, temporary system issue.',
   },
   generation: {
     tabs: {
@@ -41,6 +43,7 @@ const translation = {
     },
     title: 'AI Completion',
     queryTitle: 'Query content',
+    completionResult: 'Completion result',
     queryPlaceholder: 'Write your query content...',
     run: 'Execute',
     copy: 'Copy',
@@ -51,11 +54,17 @@ const translation = {
     csvStructureTitle: 'The CSV file must conform to the following structure:',
     downloadTemplate: 'Download the template here',
     field: 'Field',
+    batchFailed: {
+      info: '{{num}} failed executions',
+      retry: 'Retry',
+      outputPlaceholder: 'No output content',
+    },
     errorMsg: {
       empty: 'Please input content in the uploaded file.',
       fileStructNotMatch: 'The uploaded CSV file not match the struct.',
       emptyLine: 'Row {{rowIndex}} is empty',
-      invalidLine: 'Row {{rowIndex}}: variables value can not be empty',
+      invalidLine: 'Row {{rowIndex}}: {{varName}} value can not be empty',
+      moreThanMaxLengthLine: 'Row {{rowIndex}}: {{varName}} value can not be more than {{maxLength}} characters',
       atLeastOne: 'Please input at least one row in the uploaded file.',
     },
   },

@@ -1,21 +1,18 @@
 'use client'
 import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useBoolean } from 'ahooks'
 import AppUnavailable from '../../base/app-unavailable'
 import StepsNavBar from './steps-nav-bar'
 import StepOne from './step-one'
 import StepTwo from './step-two'
 import StepThree from './step-three'
 import { DataSourceType } from '@/models/datasets'
-import type { DataSet, createDocumentResponse } from '@/models/datasets'
-import { fetchDataSource, fetchTenantInfo } from '@/service/common'
-import { fetchDataDetail } from '@/service/datasets'
-import type { DataSourceNotionPage } from '@/models/common'
-
-import AccountSetting from '@/app/components/header/account-setting'
-
-type Page = DataSourceNotionPage & { workspace_id: string }
+import type { DataSet, FileItem, createDocumentResponse } from '@/models/datasets'
+import { fetchDataSource } from '@/service/common'
+import { fetchDatasetDetail } from '@/service/datasets'
+import type { NotionPage } from '@/models/common'
+import { useProviderContext } from '@/context/provider-context'
+import { useModalContext } from '@/context/modal-context'
 
 type DatasetUpdateFormProps = {
   datasetId?: string
@@ -23,28 +20,27 @@ type DatasetUpdateFormProps = {
 
 const DatasetUpdateForm = ({ datasetId }: DatasetUpdateFormProps) => {
   const { t } = useTranslation()
-  const [hasSetAPIKEY, setHasSetAPIKEY] = useState(true)
-  const [isShowSetAPIKey, { setTrue: showSetAPIKey, setFalse: hideSetAPIkey }] = useBoolean()
+  const { setShowAccountSettingModal } = useModalContext()
   const [hasConnection, setHasConnection] = useState(true)
-  const [isShowDataSourceSetting, { setTrue: showDataSourceSetting, setFalse: hideDataSourceSetting }] = useBoolean()
   const [dataSourceType, setDataSourceType] = useState<DataSourceType>(DataSourceType.FILE)
   const [step, setStep] = useState(1)
   const [indexingTypeCache, setIndexTypeCache] = useState('')
-  const [fileList, setFiles] = useState<any[]>([])
+  const [fileList, setFiles] = useState<FileItem[]>([])
   const [result, setResult] = useState<createDocumentResponse | undefined>()
   const [hasError, setHasError] = useState(false)
+  const { embeddingsDefaultModel } = useProviderContext()
 
-  const [notionPages, setNotionPages] = useState<Page[]>([])
-  const updateNotionPages = (value: Page[]) => {
+  const [notionPages, setNotionPages] = useState<NotionPage[]>([])
+  const updateNotionPages = (value: NotionPage[]) => {
     setNotionPages(value)
   }
 
-  const updateFileList = (preparedFiles: any) => {
+  const updateFileList = (preparedFiles: FileItem[]) => {
     setFiles(preparedFiles)
   }
 
-  const updateFile = (fileItem: any, progress: number, list: any[]) => {
-    const targetIndex = list.findIndex((file: any) => file.fileID === fileItem.fileID)
+  const updateFile = (fileItem: FileItem, progress: number, list: FileItem[]) => {
+    const targetIndex = list.findIndex(file => file.fileID === fileItem.fileID)
     list[targetIndex] = {
       ...list[targetIndex],
       progress,
@@ -77,11 +73,6 @@ const DatasetUpdateForm = ({ datasetId }: DatasetUpdateFormProps) => {
     setStep(step + delta)
   }, [step, setStep])
 
-  const checkAPIKey = async () => {
-    const data = await fetchTenantInfo({ url: '/info' })
-    const hasSetKey = data.providers.some(({ is_valid }) => is_valid)
-    setHasSetAPIKEY(hasSetKey)
-  }
   const checkNotionConnection = async () => {
     const { data } = await fetchDataSource({ url: '/data-source/integrates' })
     const hasConnection = data.filter(item => item.provider === 'notion') || []
@@ -89,7 +80,6 @@ const DatasetUpdateForm = ({ datasetId }: DatasetUpdateFormProps) => {
   }
 
   useEffect(() => {
-    checkAPIKey()
     checkNotionConnection()
   }, [])
 
@@ -98,7 +88,7 @@ const DatasetUpdateForm = ({ datasetId }: DatasetUpdateFormProps) => {
     (async () => {
       if (datasetId) {
         try {
-          const detail = await fetchDataDetail(datasetId)
+          const detail = await fetchDatasetDetail(datasetId)
           setDetail(detail)
         }
         catch (e) {
@@ -119,7 +109,7 @@ const DatasetUpdateForm = ({ datasetId }: DatasetUpdateFormProps) => {
       <div className="grow bg-white">
         {step === 1 && <StepOne
           hasConnection={hasConnection}
-          onSetting={showDataSourceSetting}
+          onSetting={() => setShowAccountSettingModal({ payload: 'data-source' })}
           datasetId={datasetId}
           dataSourceType={dataSourceType}
           dataSourceTypeDisable={!!detail?.data_source_type}
@@ -132,9 +122,9 @@ const DatasetUpdateForm = ({ datasetId }: DatasetUpdateFormProps) => {
           onStepChange={nextStep}
         />}
         {(step === 2 && (!datasetId || (datasetId && !!detail))) && <StepTwo
-          hasSetAPIKEY={hasSetAPIKEY}
-          onSetting={showSetAPIKey}
-          indexingType={detail?.indexing_technique || ''}
+          hasSetAPIKEY={!!embeddingsDefaultModel}
+          onSetting={() => setShowAccountSettingModal({ payload: 'provider' })}
+          indexingType={detail?.indexing_technique}
           datasetId={datasetId}
           dataSourceType={dataSourceType}
           files={fileList.map(file => file.file)}
@@ -150,11 +140,6 @@ const DatasetUpdateForm = ({ datasetId }: DatasetUpdateFormProps) => {
           creationCache={result}
         />}
       </div>
-      {isShowSetAPIKey && <AccountSetting activeTab="provider" onCancel={async () => {
-        await checkAPIKey()
-        hideSetAPIkey()
-      }} />}
-      {isShowDataSourceSetting && <AccountSetting activeTab="data-source" onCancel={hideDataSourceSetting}/>}
     </div>
   )
 }

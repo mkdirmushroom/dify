@@ -1,24 +1,36 @@
 import datetime
-import logging
+import json
+import math
 import random
 import string
+import threading
+import time
+import uuid
 
 import click
-from flask import current_app
+from tqdm import tqdm
+from flask import current_app, Flask
+from langchain.embeddings import OpenAIEmbeddings
 from werkzeug.exceptions import NotFound
 
+from core.embedding.cached_embedding import CacheEmbedding
 from core.index.index import IndexBuilder
+from core.model_providers.model_factory import ModelFactory
+from core.model_providers.models.embedding.openai_embedding import OpenAIEmbedding
+from core.model_providers.models.entity.model_params import ModelType
+from core.model_providers.providers.hosted import hosted_model_providers
+from core.model_providers.providers.openai_provider import OpenAIProvider
 from libs.password import password_pattern, valid_password, hash_password
 from libs.helper import email as email_validate
 from extensions.ext_database import db
 from libs.rsa import generate_key_pair
-from models.account import InvitationCode, Tenant
-from models.dataset import Dataset
-from models.model import Account
+from models.account import InvitationCode, Tenant, TenantAccountJoin
+from models.dataset import Dataset, DatasetQuery, Document, DatasetCollectionBinding
+from models.model import Account, AppModelConfig, App
 import secrets
 import base64
 
-from models.provider import Provider
+from models.provider import Provider, ProviderType, ProviderQuotaType, ProviderModel
 
 
 @click.command('reset-password', help='Reset the account password.')
@@ -100,6 +112,7 @@ def reset_encrypt_key_pair():
     tenant.encrypt_public_key = generate_key_pair(tenant.id)
 
     db.session.query(Provider).filter(Provider.provider_type == 'custom').delete()
+    db.session.query(ProviderModel).delete()
     db.session.commit()
 
     click.echo(click.style('Congratulations! '
@@ -171,7 +184,7 @@ def recreate_all_dataset_indexes():
     page = 1
     while True:
         try:
-            datasets = db.session.query(Dataset).filter(Dataset.indexing_technique == 'high_quality')\
+            datasets = db.session.query(Dataset).filter(Dataset.indexing_technique == 'high_quality') \
                 .order_by(Dataset.created_at.desc()).paginate(page=page, per_page=50)
         except NotFound:
             break
@@ -187,10 +200,522 @@ def recreate_all_dataset_indexes():
                 else:
                     click.echo('passed.')
             except Exception as e:
-                click.echo(click.style('Recreate dataset index error: {} {}'.format(e.__class__.__name__, str(e)), fg='red'))
+                click.echo(
+                    click.style('Recreate dataset index error: {} {}'.format(e.__class__.__name__, str(e)), fg='red'))
                 continue
 
     click.echo(click.style('Congratulations! Recreate {} dataset indexes.'.format(recreate_count), fg='green'))
+
+
+@click.command('clean-unused-dataset-indexes', help='Clean unused dataset indexes.')
+def clean_unused_dataset_indexes():
+    click.echo(click.style('Start clean unused dataset indexes.', fg='green'))
+    clean_days = int(current_app.config.get('CLEAN_DAY_SETTING'))
+    start_at = time.perf_counter()
+    thirty_days_ago = datetime.datetime.now() - datetime.timedelta(days=clean_days)
+    page = 1
+    while True:
+        try:
+            datasets = db.session.query(Dataset).filter(Dataset.created_at < thirty_days_ago) \
+                .order_by(Dataset.created_at.desc()).paginate(page=page, per_page=50)
+        except NotFound:
+            break
+        page += 1
+        for dataset in datasets:
+            dataset_query = db.session.query(DatasetQuery).filter(
+                DatasetQuery.created_at > thirty_days_ago,
+                DatasetQuery.dataset_id == dataset.id
+            ).all()
+            if not dataset_query or len(dataset_query) == 0:
+                documents = db.session.query(Document).filter(
+                    Document.dataset_id == dataset.id,
+                    Document.indexing_status == 'completed',
+                    Document.enabled == True,
+                    Document.archived == False,
+                    Document.updated_at > thirty_days_ago
+                ).all()
+                if not documents or len(documents) == 0:
+                    try:
+                        # remove index
+                        vector_index = IndexBuilder.get_index(dataset, 'high_quality')
+                        kw_index = IndexBuilder.get_index(dataset, 'economy')
+                        # delete from vector index
+                        if vector_index:
+                            if dataset.collection_binding_id:
+                                vector_index.delete_by_group_id(dataset.id)
+                            else:
+                                if dataset.collection_binding_id:
+                                    vector_index.delete_by_group_id(dataset.id)
+                                else:
+                                    vector_index.delete()
+                        kw_index.delete()
+                        # update document
+                        update_params = {
+                            Document.enabled: False
+                        }
+
+                        Document.query.filter_by(dataset_id=dataset.id).update(update_params)
+                        db.session.commit()
+                        click.echo(click.style('Cleaned unused dataset {} from db success!'.format(dataset.id),
+                                               fg='green'))
+                    except Exception as e:
+                        click.echo(
+                            click.style('clean dataset index error: {} {}'.format(e.__class__.__name__, str(e)),
+                                        fg='red'))
+    end_at = time.perf_counter()
+    click.echo(click.style('Cleaned unused dataset from db success latency: {}'.format(end_at - start_at), fg='green'))
+
+
+@click.command('sync-anthropic-hosted-providers', help='Sync anthropic hosted providers.')
+def sync_anthropic_hosted_providers():
+    if not hosted_model_providers.anthropic:
+        click.echo(click.style('Anthropic hosted provider is not configured.', fg='red'))
+        return
+
+    click.echo(click.style('Start sync anthropic hosted providers.', fg='green'))
+    count = 0
+
+    new_quota_limit = hosted_model_providers.anthropic.quota_limit
+
+    page = 1
+    while True:
+        try:
+            providers = db.session.query(Provider).filter(
+                Provider.provider_name == 'anthropic',
+                Provider.provider_type == ProviderType.SYSTEM.value,
+                Provider.quota_type == ProviderQuotaType.TRIAL.value,
+                Provider.quota_limit != new_quota_limit
+            ).order_by(Provider.created_at.desc()).paginate(page=page, per_page=100)
+        except NotFound:
+            break
+
+        page += 1
+        for provider in providers:
+            try:
+                click.echo('Syncing tenant anthropic hosted provider: {}, origin: limit {}, used {}'
+                           .format(provider.tenant_id, provider.quota_limit, provider.quota_used))
+                original_quota_limit = provider.quota_limit
+                division = math.ceil(new_quota_limit / 1000)
+
+                provider.quota_limit = new_quota_limit if original_quota_limit == 1000 \
+                    else original_quota_limit * division
+                provider.quota_used = division * provider.quota_used
+                db.session.commit()
+
+                count += 1
+            except Exception as e:
+                click.echo(click.style(
+                    'Sync tenant anthropic hosted provider error: {} {}'.format(e.__class__.__name__, str(e)),
+                    fg='red'))
+                continue
+
+    click.echo(click.style('Congratulations! Synced {} anthropic hosted providers.'.format(count), fg='green'))
+
+
+@click.command('create-qdrant-indexes', help='Create qdrant indexes.')
+def create_qdrant_indexes():
+    click.echo(click.style('Start create qdrant indexes.', fg='green'))
+    create_count = 0
+
+    page = 1
+    while True:
+        try:
+            datasets = db.session.query(Dataset).filter(Dataset.indexing_technique == 'high_quality') \
+                .order_by(Dataset.created_at.desc()).paginate(page=page, per_page=50)
+        except NotFound:
+            break
+
+        page += 1
+        for dataset in datasets:
+            if dataset.index_struct_dict:
+                if dataset.index_struct_dict['type'] != 'qdrant':
+                    try:
+                        click.echo('Create dataset qdrant index: {}'.format(dataset.id))
+                        try:
+                            embedding_model = ModelFactory.get_embedding_model(
+                                tenant_id=dataset.tenant_id,
+                                model_provider_name=dataset.embedding_model_provider,
+                                model_name=dataset.embedding_model
+                            )
+                        except Exception:
+                            try:
+                                embedding_model = ModelFactory.get_embedding_model(
+                                    tenant_id=dataset.tenant_id
+                                )
+                                dataset.embedding_model = embedding_model.name
+                                dataset.embedding_model_provider = embedding_model.model_provider.provider_name
+                            except Exception:
+                                provider = Provider(
+                                    id='provider_id',
+                                    tenant_id=dataset.tenant_id,
+                                    provider_name='openai',
+                                    provider_type=ProviderType.SYSTEM.value,
+                                    encrypted_config=json.dumps({'openai_api_key': 'TEST'}),
+                                    is_valid=True,
+                                )
+                                model_provider = OpenAIProvider(provider=provider)
+                                embedding_model = OpenAIEmbedding(name="text-embedding-ada-002",
+                                                                  model_provider=model_provider)
+                        embeddings = CacheEmbedding(embedding_model)
+
+                        from core.index.vector_index.qdrant_vector_index import QdrantVectorIndex, QdrantConfig
+
+                        index = QdrantVectorIndex(
+                            dataset=dataset,
+                            config=QdrantConfig(
+                                endpoint=current_app.config.get('QDRANT_URL'),
+                                api_key=current_app.config.get('QDRANT_API_KEY'),
+                                root_path=current_app.root_path
+                            ),
+                            embeddings=embeddings
+                        )
+                        if index:
+                            index.create_qdrant_dataset(dataset)
+                            index_struct = {
+                                "type": 'qdrant',
+                                "vector_store": {
+                                    "class_prefix": dataset.index_struct_dict['vector_store']['class_prefix']}
+                            }
+                            dataset.index_struct = json.dumps(index_struct)
+                            db.session.commit()
+                            create_count += 1
+                        else:
+                            click.echo('passed.')
+                    except Exception as e:
+                        click.echo(
+                            click.style('Create dataset index error: {} {}'.format(e.__class__.__name__, str(e)),
+                                        fg='red'))
+                        continue
+
+    click.echo(click.style('Congratulations! Create {} dataset indexes.'.format(create_count), fg='green'))
+
+
+@click.command('update-qdrant-indexes', help='Update qdrant indexes.')
+def update_qdrant_indexes():
+    click.echo(click.style('Start Update qdrant indexes.', fg='green'))
+    create_count = 0
+
+    page = 1
+    while True:
+        try:
+            datasets = db.session.query(Dataset).filter(Dataset.indexing_technique == 'high_quality') \
+                .order_by(Dataset.created_at.desc()).paginate(page=page, per_page=50)
+        except NotFound:
+            break
+
+        page += 1
+        for dataset in datasets:
+            if dataset.index_struct_dict:
+                if dataset.index_struct_dict['type'] != 'qdrant':
+                    try:
+                        click.echo('Update dataset qdrant index: {}'.format(dataset.id))
+                        try:
+                            embedding_model = ModelFactory.get_embedding_model(
+                                tenant_id=dataset.tenant_id,
+                                model_provider_name=dataset.embedding_model_provider,
+                                model_name=dataset.embedding_model
+                            )
+                        except Exception:
+                            provider = Provider(
+                                id='provider_id',
+                                tenant_id=dataset.tenant_id,
+                                provider_name='openai',
+                                provider_type=ProviderType.CUSTOM.value,
+                                encrypted_config=json.dumps({'openai_api_key': 'TEST'}),
+                                is_valid=True,
+                            )
+                            model_provider = OpenAIProvider(provider=provider)
+                            embedding_model = OpenAIEmbedding(name="text-embedding-ada-002",
+                                                              model_provider=model_provider)
+                        embeddings = CacheEmbedding(embedding_model)
+
+                        from core.index.vector_index.qdrant_vector_index import QdrantVectorIndex, QdrantConfig
+
+                        index = QdrantVectorIndex(
+                            dataset=dataset,
+                            config=QdrantConfig(
+                                endpoint=current_app.config.get('QDRANT_URL'),
+                                api_key=current_app.config.get('QDRANT_API_KEY'),
+                                root_path=current_app.root_path
+                            ),
+                            embeddings=embeddings
+                        )
+                        if index:
+                            index.update_qdrant_dataset(dataset)
+                            create_count += 1
+                        else:
+                            click.echo('passed.')
+                    except Exception as e:
+                        click.echo(
+                            click.style('Create dataset index error: {} {}'.format(e.__class__.__name__, str(e)),
+                                        fg='red'))
+                        continue
+
+    click.echo(click.style('Congratulations! Update {} dataset indexes.'.format(create_count), fg='green'))
+
+
+@click.command('normalization-collections', help='restore all collections in one')
+def normalization_collections():
+    click.echo(click.style('Start normalization collections.', fg='green'))
+    normalization_count = []
+    page = 1
+    while True:
+        try:
+            datasets = db.session.query(Dataset).filter(Dataset.indexing_technique == 'high_quality') \
+                .order_by(Dataset.created_at.desc()).paginate(page=page, per_page=100)
+        except NotFound:
+            break
+        datasets_result = datasets.items
+        page += 1
+        for i in range(0, len(datasets_result), 5):
+            threads = []
+            sub_datasets = datasets_result[i:i + 5]
+            for dataset in sub_datasets:
+                document_format_thread = threading.Thread(target=deal_dataset_vector, kwargs={
+                    'flask_app': current_app._get_current_object(),
+                    'dataset': dataset,
+                    'normalization_count': normalization_count
+                })
+                threads.append(document_format_thread)
+                document_format_thread.start()
+            for thread in threads:
+                thread.join()
+
+    click.echo(click.style('Congratulations! restore {} dataset indexes.'.format(len(normalization_count)), fg='green'))
+
+
+def deal_dataset_vector(flask_app: Flask, dataset: Dataset, normalization_count: list):
+    with flask_app.app_context():
+        try:
+            click.echo('restore dataset index: {}'.format(dataset.id))
+            try:
+                embedding_model = ModelFactory.get_embedding_model(
+                    tenant_id=dataset.tenant_id,
+                    model_provider_name=dataset.embedding_model_provider,
+                    model_name=dataset.embedding_model
+                )
+            except Exception:
+                provider = Provider(
+                    id='provider_id',
+                    tenant_id=dataset.tenant_id,
+                    provider_name='openai',
+                    provider_type=ProviderType.CUSTOM.value,
+                    encrypted_config=json.dumps({'openai_api_key': 'TEST'}),
+                    is_valid=True,
+                )
+                model_provider = OpenAIProvider(provider=provider)
+                embedding_model = OpenAIEmbedding(name="text-embedding-ada-002",
+                                                  model_provider=model_provider)
+            embeddings = CacheEmbedding(embedding_model)
+            dataset_collection_binding = db.session.query(DatasetCollectionBinding). \
+                filter(DatasetCollectionBinding.provider_name == embedding_model.model_provider.provider_name,
+                       DatasetCollectionBinding.model_name == embedding_model.name). \
+                order_by(DatasetCollectionBinding.created_at). \
+                first()
+
+            if not dataset_collection_binding:
+                dataset_collection_binding = DatasetCollectionBinding(
+                    provider_name=embedding_model.model_provider.provider_name,
+                    model_name=embedding_model.name,
+                    collection_name="Vector_index_" + str(uuid.uuid4()).replace("-", "_") + '_Node'
+                )
+                db.session.add(dataset_collection_binding)
+                db.session.commit()
+
+            from core.index.vector_index.qdrant_vector_index import QdrantVectorIndex, QdrantConfig
+
+            index = QdrantVectorIndex(
+                dataset=dataset,
+                config=QdrantConfig(
+                    endpoint=current_app.config.get('QDRANT_URL'),
+                    api_key=current_app.config.get('QDRANT_API_KEY'),
+                    root_path=current_app.root_path
+                ),
+                embeddings=embeddings
+            )
+            if index:
+                # index.delete_by_group_id(dataset.id)
+                index.restore_dataset_in_one(dataset, dataset_collection_binding)
+            else:
+                click.echo('passed.')
+            normalization_count.append(1)
+        except Exception as e:
+            click.echo(
+                click.style('Create dataset index error: {} {}'.format(e.__class__.__name__, str(e)),
+                            fg='red'))
+
+
+@click.command('update_app_model_configs', help='Migrate data to support paragraph variable.')
+@click.option("--batch-size", default=500, help="Number of records to migrate in each batch.")
+def update_app_model_configs(batch_size):
+    pre_prompt_template = '{{default_input}}'
+    user_input_form_template = {
+        "en-US": [
+            {
+                "paragraph": {
+                    "label": "Query",
+                    "variable": "default_input",
+                    "required": False,
+                    "default": ""
+                }
+            }
+        ],
+        "zh-Hans": [
+            {
+                "paragraph": {
+                    "label": "查询内容",
+                    "variable": "default_input",
+                    "required": False,
+                    "default": ""
+                }
+            }
+        ]
+    }
+
+    click.secho("Start migrate old data that the text generator can support paragraph variable.", fg='green')
+
+    total_records = db.session.query(AppModelConfig) \
+        .join(App, App.app_model_config_id == AppModelConfig.id) \
+        .filter(App.mode == 'completion') \
+        .count()
+
+    if total_records == 0:
+        click.secho("No data to migrate.", fg='green')
+        return
+
+    num_batches = (total_records + batch_size - 1) // batch_size
+
+    with tqdm(total=total_records, desc="Migrating Data") as pbar:
+        for i in range(num_batches):
+            offset = i * batch_size
+            limit = min(batch_size, total_records - offset)
+
+            click.secho(f"Fetching batch {i + 1}/{num_batches} from source database...", fg='green')
+
+            data_batch = db.session.query(AppModelConfig) \
+                .join(App, App.app_model_config_id == AppModelConfig.id) \
+                .filter(App.mode == 'completion') \
+                .order_by(App.created_at) \
+                .offset(offset).limit(limit).all()
+
+            if not data_batch:
+                click.secho("No more data to migrate.", fg='green')
+                break
+
+            try:
+                click.secho(f"Migrating {len(data_batch)} records...", fg='green')
+                for data in data_batch:
+                    # click.secho(f"Migrating data {data.id}, pre_prompt: {data.pre_prompt}, user_input_form: {data.user_input_form}", fg='green')
+
+                    if data.pre_prompt is None:
+                        data.pre_prompt = pre_prompt_template
+                    else:
+                        if pre_prompt_template in data.pre_prompt:
+                            continue
+                        data.pre_prompt += pre_prompt_template
+
+                    app_data = db.session.query(App) \
+                        .filter(App.id == data.app_id) \
+                        .one()
+
+                    account_data = db.session.query(Account) \
+                        .join(TenantAccountJoin, Account.id == TenantAccountJoin.account_id) \
+                        .filter(TenantAccountJoin.role == 'owner') \
+                        .filter(TenantAccountJoin.tenant_id == app_data.tenant_id) \
+                        .one_or_none()
+
+                    if not account_data:
+                        continue
+
+                    if data.user_input_form is None or data.user_input_form == 'null':
+                        data.user_input_form = json.dumps(user_input_form_template[account_data.interface_language])
+                    else:
+                        raw_json_data = json.loads(data.user_input_form)
+                        raw_json_data.append(user_input_form_template[account_data.interface_language][0])
+                        data.user_input_form = json.dumps(raw_json_data)
+
+                    # click.secho(f"Updated data {data.id}, pre_prompt: {data.pre_prompt}, user_input_form: {data.user_input_form}", fg='green')
+
+                db.session.commit()
+
+            except Exception as e:
+                click.secho(f"Error while migrating data: {e}, app_id: {data.app_id}, app_model_config_id: {data.id}",
+                            fg='red')
+                continue
+
+            click.secho(f"Successfully migrated batch {i + 1}/{num_batches}.", fg='green')
+
+            pbar.update(len(data_batch))
+
+@click.command('migrate_default_input_to_dataset_query_variable')
+@click.option("--batch-size", default=500, help="Number of records to migrate in each batch.")
+def migrate_default_input_to_dataset_query_variable(batch_size):
+
+    click.secho("Starting...", fg='green')
+
+    total_records = db.session.query(AppModelConfig) \
+        .join(App, App.app_model_config_id == AppModelConfig.id) \
+        .filter(App.mode == 'completion') \
+        .filter(AppModelConfig.dataset_query_variable == None) \
+        .count()
+    
+    if total_records == 0:
+        click.secho("No data to migrate.", fg='green')
+        return
+
+    num_batches = (total_records + batch_size - 1) // batch_size
+    
+    with tqdm(total=total_records, desc="Migrating Data") as pbar:
+        for i in range(num_batches):
+            offset = i * batch_size
+            limit = min(batch_size, total_records - offset)
+
+            click.secho(f"Fetching batch {i + 1}/{num_batches} from source database...", fg='green')
+
+            data_batch = db.session.query(AppModelConfig) \
+                .join(App, App.app_model_config_id == AppModelConfig.id) \
+                .filter(App.mode == 'completion') \
+                .filter(AppModelConfig.dataset_query_variable == None) \
+                .order_by(App.created_at) \
+                .offset(offset).limit(limit).all()
+
+            if not data_batch:
+                click.secho("No more data to migrate.", fg='green')
+                break
+
+            try:
+                click.secho(f"Migrating {len(data_batch)} records...", fg='green')
+                for data in data_batch:
+                    config = AppModelConfig.to_dict(data)
+
+                    tools = config["agent_mode"]["tools"]
+                    dataset_exists = "dataset" in str(tools)
+                    if not dataset_exists:
+                        continue
+
+                    user_input_form = config.get("user_input_form", [])
+                    for form in user_input_form:
+                        paragraph = form.get('paragraph')
+                        if paragraph \
+                            and paragraph.get('variable') == 'query':
+                                data.dataset_query_variable = 'query'
+                                break
+                        
+                        if paragraph \
+                            and paragraph.get('variable') == 'default_input':
+                                data.dataset_query_variable = 'default_input'
+                                break
+
+                db.session.commit()
+
+            except Exception as e:
+                click.secho(f"Error while migrating data: {e}, app_id: {data.app_id}, app_model_config_id: {data.id}",
+                            fg='red')
+                continue
+            
+            click.secho(f"Successfully migrated batch {i + 1}/{num_batches}.", fg='green')
+
+            pbar.update(len(data_batch))
 
 
 def register_commands(app):
@@ -199,3 +724,10 @@ def register_commands(app):
     app.cli.add_command(generate_invitation_codes)
     app.cli.add_command(reset_encrypt_key_pair)
     app.cli.add_command(recreate_all_dataset_indexes)
+    app.cli.add_command(sync_anthropic_hosted_providers)
+    app.cli.add_command(clean_unused_dataset_indexes)
+    app.cli.add_command(create_qdrant_indexes)
+    app.cli.add_command(update_qdrant_indexes)
+    app.cli.add_command(update_app_model_configs)
+    app.cli.add_command(normalization_collections)
+    app.cli.add_command(migrate_default_input_to_dataset_query_variable)

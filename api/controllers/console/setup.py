@@ -1,7 +1,6 @@
 # -*- coding:utf-8 -*-
 from functools import wraps
 
-import flask_login
 from flask import request, current_app
 from flask_restful import Resource, reqparse
 
@@ -19,15 +18,16 @@ from .wraps import only_edition_self_hosted
 
 class SetupApi(Resource):
 
-    @only_edition_self_hosted
     def get(self):
-        setup_status = get_setup_status()
-        if setup_status:
-            return {
-                'step': 'finished',
-                'setup_at': setup_status.setup_at.isoformat()
-            }  
-        return {'step': 'not_start'}
+        if current_app.config['EDITION'] == 'SELF_HOSTED':
+            setup_status = get_setup_status()
+            if setup_status:
+                return {
+                    'step': 'finished',
+                    'setup_at': setup_status.setup_at.isoformat()
+                }
+            return {'step': 'not_start'}
+        return {'step': 'finished'}
 
     @only_edition_self_hosted
     def post(self):
@@ -57,9 +57,6 @@ class SetupApi(Resource):
         )
 
         setup()
-
-        # Login
-        flask_login.login_user(account)
         AccountService.update_last_login(account, request)
 
         return {'result': 'success'}, 201

@@ -1,6 +1,6 @@
 'use client'
 import type { FC } from 'react'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useBoolean } from 'ahooks'
 import { t } from 'i18next'
 import cn from 'classnames'
@@ -8,26 +8,33 @@ import TextGenerationRes from '@/app/components/app/text-generate/item'
 import NoData from '@/app/components/share/text-generation/no-data'
 import Toast from '@/app/components/base/toast'
 import { sendCompletionMessage, updateFeedback } from '@/service/share'
-import type { Feedbacktype } from '@/app/components/app/chat'
+import type { Feedbacktype } from '@/app/components/app/chat/type'
 import Loading from '@/app/components/base/loading'
 import type { PromptConfig } from '@/models/debug'
 import type { InstalledApp } from '@/models/explore'
+import type { ModerationService } from '@/models/common'
+import { TransferMethod, type VisionFile, type VisionSettings } from '@/types/app'
 export type IResultProps = {
   isCallBatchAPI: boolean
   isPC: boolean
   isMobile: boolean
   isInstalledApp: boolean
   installedAppInfo?: InstalledApp
+  isError: boolean
   promptConfig: PromptConfig | null
   moreLikeThisEnabled: boolean
   inputs: Record<string, any>
-  query: string
   controlSend?: number
+  controlRetry?: number
   controlStopResponding?: number
   onShowRes: () => void
   handleSaveMessage: (messageId: string) => void
   taskId?: number
-  onCompleted: (taskId?: number, success?: boolean) => void
+  onCompleted: (completionRes: string, taskId?: number, success?: boolean) => void
+  enableModeration?: boolean
+  moderationService?: (text: string) => ReturnType<ModerationService>
+  visionConfig: VisionSettings
+  completionFiles: VisionFile[]
 }
 
 const Result: FC<IResultProps> = ({
@@ -36,16 +43,19 @@ const Result: FC<IResultProps> = ({
   isMobile,
   isInstalledApp,
   installedAppInfo,
+  isError,
   promptConfig,
   moreLikeThisEnabled,
   inputs,
-  query,
   controlSend,
+  controlRetry,
   controlStopResponding,
   onShowRes,
   handleSaveMessage,
   taskId,
   onCompleted,
+  visionConfig,
+  completionFiles,
 }) => {
   const [isResponsing, { setTrue: setResponsingTrue, setFalse: setResponsingFalse }] = useBoolean(false)
   useEffect(() => {
@@ -53,7 +63,13 @@ const Result: FC<IResultProps> = ({
       setResponsingFalse()
   }, [controlStopResponding])
 
-  const [completionRes, setCompletionRes] = useState('')
+  const [completionRes, doSetCompletionRes] = useState('')
+  const completionResRef = useRef('')
+  const setCompletionRes = (res: string) => {
+    completionResRef.current = res
+    doSetCompletionRes(res)
+  }
+  const getCompletionRes = () => completionResRef.current
   const { notify } = Toast
   const isNoData = !completionRes
 
@@ -80,21 +96,26 @@ const Result: FC<IResultProps> = ({
     if (!prompt_variables || prompt_variables?.length === 0)
       return true
 
-    let hasEmptyInput = false
+    let hasEmptyInput = ''
     const requiredVars = prompt_variables?.filter(({ key, name, required }) => {
       const res = (!key || !key.trim()) || (!name || !name.trim()) || (required || required === undefined || required === null)
       return res
     }) || [] // compatible with old version
-    requiredVars.forEach(({ key }) => {
+    requiredVars.forEach(({ key, name }) => {
       if (hasEmptyInput)
         return
 
       if (!inputs[key])
-        hasEmptyInput = true
+        hasEmptyInput = name
     })
 
     if (hasEmptyInput) {
-      logError(t('appDebug.errorMessage.valueOfVarRequired'))
+      logError(t('appDebug.errorMessage.valueOfVarRequired', { key: hasEmptyInput }))
+      return false
+    }
+
+    if (completionFiles.find(item => item.transfer_method === TransferMethod.local_file && !item.upload_file_id)) {
+      notify({ type: 'info', message: t('appDebug.errorMessage.waitForImgUpload') })
       return false
     }
     return !hasEmptyInput
@@ -109,14 +130,19 @@ const Result: FC<IResultProps> = ({
     if (!checkCanSend())
       return
 
-    if (!query) {
-      logError(t('appDebug.errorMessage.queryRequired'))
-      return false
-    }
-
-    const data = {
+    const data: Record<string, any> = {
       inputs,
-      query,
+    }
+    if (visionConfig.enabled && completionFiles && completionFiles?.length > 0) {
+      data.files = completionFiles.map((item) => {
+        if (item.transfer_method === TransferMethod.local_file) {
+          return {
+            ...item,
+            url: '',
+          }
+        }
+        return item
+      })
     }
 
     setMessageId(null)
@@ -125,27 +151,49 @@ const Result: FC<IResultProps> = ({
     })
     setCompletionRes('')
 
-    const res: string[] = []
+    let res: string[] = []
     let tempMessageId = ''
 
     if (!isPC)
       onShowRes()
 
     setResponsingTrue()
+    const startTime = Date.now()
+    let isTimeout = false
+    const runId = setInterval(() => {
+      if (Date.now() - startTime > 1000 * 60) { // 1min timeout
+        clearInterval(runId)
+        setResponsingFalse()
+        onCompleted(getCompletionRes(), taskId, false)
+        isTimeout = true
+      }
+    }, 1000)
     sendCompletionMessage(data, {
-      onData: (data: string, _isFirstMessage: boolean, { messageId }: any) => {
+      onData: (data: string, _isFirstMessage: boolean, { messageId }) => {
         tempMessageId = messageId
         res.push(data)
         setCompletionRes(res.join(''))
       },
       onCompleted: () => {
+        if (isTimeout)
+          return
+
         setResponsingFalse()
         setMessageId(tempMessageId)
-        onCompleted(taskId, true)
+        onCompleted(getCompletionRes(), taskId, true)
+        clearInterval(runId)
+      },
+      onMessageReplace: (messageReplace) => {
+        res = [messageReplace.answer]
+        setCompletionRes(res.join(''))
       },
       onError() {
+        if (isTimeout)
+          return
+
         setResponsingFalse()
-        onCompleted(taskId, false)
+        onCompleted(getCompletionRes(), taskId, false)
+        clearInterval(runId)
       },
     }, isInstalledApp, installedAppInfo?.id)
   }
@@ -158,9 +206,16 @@ const Result: FC<IResultProps> = ({
     }
   }, [controlSend])
 
+  useEffect(() => {
+    if (controlRetry)
+      handleSend()
+  }, [controlRetry])
+
   const renderTextGenerationRes = () => (
     <TextGenerationRes
       className='mt-3'
+      isError={isError}
+      onRetry={handleSend}
       content={completionRes}
       messageId={messageId}
       isInWebApp

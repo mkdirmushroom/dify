@@ -15,8 +15,9 @@ from controllers.console.app.error import AppMoreLikeThisDisabledError, Provider
     ProviderQuotaExceededError, ProviderModelCurrentlyNotSupportError, CompletionRequestError
 from controllers.console.explore.error import NotCompletionAppError, AppSuggestedQuestionsAfterAnswerDisabledError
 from controllers.console.explore.wraps import InstalledAppResource
-from core.llm.error import LLMRateLimitError, LLMBadRequestError, LLMAuthorizationError, LLMAPIConnectionError, \
+from core.model_providers.error import LLMRateLimitError, LLMBadRequestError, LLMAuthorizationError, LLMAPIConnectionError, \
     ProviderTokenNotInitError, LLMAPIUnavailableError, QuotaExceededError, ModelCurrentlyNotSupportError
+from fields.message_fields import message_infinite_scroll_pagination_fields
 from libs.helper import uuid_value, TimestampField
 from services.completion_service import CompletionService
 from services.errors.app import MoreLikeThisDisabledError
@@ -26,25 +27,6 @@ from services.message_service import MessageService
 
 
 class MessageListApi(InstalledAppResource):
-    feedback_fields = {
-        'rating': fields.String
-    }
-
-    message_fields = {
-        'id': fields.String,
-        'conversation_id': fields.String,
-        'inputs': fields.Raw,
-        'query': fields.String,
-        'answer': fields.String,
-        'feedback': fields.Nested(feedback_fields, attribute='user_feedback', allow_null=True),
-        'created_at': TimestampField
-    }
-
-    message_infinite_scroll_pagination_fields = {
-        'limit': fields.Integer,
-        'has_more': fields.Boolean,
-        'data': fields.List(fields.Nested(message_fields))
-    }
 
     @marshal_with(message_infinite_scroll_pagination_fields)
     def get(self, installed_app):
@@ -107,8 +89,8 @@ class MessageMoreLikeThisApi(InstalledAppResource):
             raise NotFound("Message Not Exists.")
         except MoreLikeThisDisabledError:
             raise AppMoreLikeThisDisabledError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -135,8 +117,8 @@ def compact_response(response: Union[dict | Generator]) -> Response:
                 yield "data: " + json.dumps(api.handle_error(NotFound("Message Not Exists.")).get_json()) + "\n\n"
             except MoreLikeThisDisabledError:
                 yield "data: " + json.dumps(api.handle_error(AppMoreLikeThisDisabledError()).get_json()) + "\n\n"
-            except ProviderTokenNotInitError:
-                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError()).get_json()) + "\n\n"
+            except ProviderTokenNotInitError as ex:
+                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError(ex.description)).get_json()) + "\n\n"
             except QuotaExceededError:
                 yield "data: " + json.dumps(api.handle_error(ProviderQuotaExceededError()).get_json()) + "\n\n"
             except ModelCurrentlyNotSupportError:
@@ -174,8 +156,8 @@ class MessageSuggestedQuestionApi(InstalledAppResource):
             raise NotFound("Conversation not found")
         except SuggestedQuestionsAfterAnswerDisabledError:
             raise AppSuggestedQuestionsAfterAnswerDisabledError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:

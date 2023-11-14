@@ -14,7 +14,7 @@ from controllers.web.error import NotChatAppError, CompletionRequestError, Provi
     AppMoreLikeThisDisabledError, NotCompletionAppError, AppSuggestedQuestionsAfterAnswerDisabledError, \
     ProviderQuotaExceededError, ProviderModelCurrentlyNotSupportError
 from controllers.web.wraps import WebApiResource
-from core.llm.error import LLMRateLimitError, LLMBadRequestError, LLMAuthorizationError, LLMAPIConnectionError, \
+from core.model_providers.error import LLMRateLimitError, LLMBadRequestError, LLMAuthorizationError, LLMAPIConnectionError, \
     ProviderTokenNotInitError, LLMAPIUnavailableError, QuotaExceededError, ModelCurrentlyNotSupportError
 from libs.helper import uuid_value, TimestampField
 from services.completion_service import CompletionService
@@ -22,11 +22,31 @@ from services.errors.app import MoreLikeThisDisabledError
 from services.errors.conversation import ConversationNotExistsError
 from services.errors.message import MessageNotExistsError, SuggestedQuestionsAfterAnswerDisabledError
 from services.message_service import MessageService
+from fields.conversation_fields import message_file_fields
 
 
 class MessageListApi(WebApiResource):
     feedback_fields = {
         'rating': fields.String
+    }
+
+    retriever_resource_fields = {
+        'id': fields.String,
+        'message_id': fields.String,
+        'position': fields.Integer,
+        'dataset_id': fields.String,
+        'dataset_name': fields.String,
+        'document_id': fields.String,
+        'document_name': fields.String,
+        'data_source_type': fields.String,
+        'segment_id': fields.String,
+        'score': fields.Float,
+        'hit_count': fields.Integer,
+        'word_count': fields.Integer,
+        'segment_position': fields.Integer,
+        'index_node_hash': fields.String,
+        'content': fields.String,
+        'created_at': TimestampField
     }
 
     message_fields = {
@@ -35,7 +55,9 @@ class MessageListApi(WebApiResource):
         'inputs': fields.Raw,
         'query': fields.String,
         'answer': fields.String,
+        'message_files': fields.List(fields.Nested(message_file_fields), attribute='files'),
         'feedback': fields.Nested(feedback_fields, attribute='user_feedback', allow_null=True),
+        'retriever_resources': fields.List(fields.Nested(retriever_resource_fields)),
         'created_at': TimestampField
     }
 
@@ -95,14 +117,14 @@ class MessageMoreLikeThisApi(WebApiResource):
         streaming = args['response_mode'] == 'streaming'
 
         try:
-            response = CompletionService.generate_more_like_this(app_model, end_user, message_id, streaming)
+            response = CompletionService.generate_more_like_this(app_model, end_user, message_id, streaming, 'web_app')
             return compact_response(response)
         except MessageNotExistsError:
             raise NotFound("Message Not Exists.")
         except MoreLikeThisDisabledError:
             raise AppMoreLikeThisDisabledError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -129,8 +151,8 @@ def compact_response(response: Union[dict | Generator]) -> Response:
                 yield "data: " + json.dumps(api.handle_error(NotFound("Message Not Exists.")).get_json()) + "\n\n"
             except MoreLikeThisDisabledError:
                 yield "data: " + json.dumps(api.handle_error(AppMoreLikeThisDisabledError()).get_json()) + "\n\n"
-            except ProviderTokenNotInitError:
-                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError()).get_json()) + "\n\n"
+            except ProviderTokenNotInitError as ex:
+                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError(ex.description)).get_json()) + "\n\n"
             except QuotaExceededError:
                 yield "data: " + json.dumps(api.handle_error(ProviderQuotaExceededError()).get_json()) + "\n\n"
             except ModelCurrentlyNotSupportError:
@@ -167,8 +189,8 @@ class MessageSuggestedQuestionApi(WebApiResource):
             raise NotFound("Conversation not found")
         except SuggestedQuestionsAfterAnswerDisabledError:
             raise AppSuggestedQuestionsAfterAnswerDisabledError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:

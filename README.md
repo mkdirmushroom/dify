@@ -6,7 +6,7 @@
   <a href="./README_ES.md">Español</a>
 </p>
 
-[Website](https://dify.ai) • [Docs](https://docs.dify.ai) • [Twitter](https://twitter.com/dify_ai) • [Discord](https://discord.gg/FngNHpbcY7)
+#### [Website](https://dify.ai) • [Docs](https://docs.dify.ai) • [Deployment Docs](https://docs.dify.ai/getting-started/install-self-hosted) •  [FAQ](https://docs.dify.ai/getting-started/faq) • [Twitter](https://twitter.com/dify_ai) • [Discord](https://discord.gg/FngNHpbcY7)
 
 **Dify** is an easy-to-use LLMOps platform designed to empower more people to create sustainable, AI-native applications. With visual orchestration for various application types, Dify offers out-of-the-box, ready-to-use applications that can also serve as Backend-as-a-Service APIs. Unify your development process with one API for plugins and datasets integration, and streamline your operations using a single interface for prompt engineering, visual analytics, and continuous improvement.
 
@@ -15,11 +15,47 @@ Applications created with Dify include:
 Out-of-the-box web sites supporting form mode and chat conversation mode
 A single API encompassing plugin capabilities, context enhancement, and more, saving you backend coding effort
 Visual data analysis, log review, and annotation for applications
-Dify is compatible with Langchain, meaning we'll gradually support multiple LLMs, currently supported:
 
-- GPT 3 (text-davinci-003)
-- GPT 3.5 Turbo(ChatGPT)
-- GPT-4
+
+https://github.com/langgenius/dify/assets/100913391/f6e658d5-31b3-4c16-a0af-9e191da4d0f6
+
+
+## Highlighted Features
+**1. LLMs support:** Choose capabilities based on different models when building your Dify AI apps. Dify is compatible with Langchain, meaning it will support various LLMs. Currently supported:
+
+- [x] **OpenAI**: GPT4, GPT3.5-turbo, GPT3.5-turbo-16k, text-davinci-003 
+- [x] **Azure OpenAI Service**
+- [x] **Anthropic**: Claude2, Claude-instant
+- [x] **Replicate**
+- [x] **Hugging Face Hub**
+- [x] **ChatGLM**
+- [x] **Llama2**
+- [x] **MiniMax**
+- [x] **Spark**
+- [x] **Wenxin**
+- [x] **Tongyi**
+
+
+We provide the following free resources for registered Dify cloud users (sign up at [dify.ai](https://dify.ai)):
+* 200 free OpenAI queries to build OpenAI-based apps
+
+  
+**2. Visual orchestration:** Build an AI app in minutes by writing and debugging prompts visually.
+
+**3. Text embedding:** Fully automated text preprocessing embeds your data as context without complex concepts. Supports PDF, TXT, and syncing data from Notion, webpages, APIs.
+
+**4. API-based:**  Backend-as-a-service. Access web apps directly or integrate via APIs without complex backend setup.
+
+**5. Plugins:** Dify "Smart Chat" now supports first-party plugins like web browsing, Google search, Wikipedia to enable online lookup, analyzing web content, and explaining the AI's reasoning process conversationally.
+
+**6. Team workspaces:** Team members can join workspaces to collaboratively edit, manage, and use team AI apps.
+
+**7. Data labeling and improvement:**  Visually inspect AI app logs and improve data via labeling. Observe the AI's reasoning process to continuously enhance performance. (Coming soon)
+
+## Use cases
+* [Create an AI ChatBot with Business Data in Minutes.](https://docs.dify.ai/use-cases/create-an-ai-chatbot-with-business-data-in-minutes)
+* [How to Build an Notion AI Assistant Based on Your Own Notes?](https://docs.dify.ai/use-cases/build-an-notion-ai-assistant)
+* [Create a Midjoureny Prompt Bot Without Code in Just a Few Minutes.](https://docs.dify.ai/use-cases/create-a-midjoureny-prompt-bot-with-dify)
 
 ## Use Cloud Services
 
@@ -31,7 +67,7 @@ Visit [Dify.ai](https://dify.ai)
 
 Before installing Dify, make sure your machine meets the following minimum system requirements:
 
-- CPU >= 1 Core
+- CPU >= 2 Core
 - RAM >= 4GB
 
 ### Quick Start
@@ -62,8 +98,6 @@ Features under development:
 We will support more datasets, including text, webpages, and even Notion content. Users can build AI applications based on their own data sources.
 - **Plugins**, introducing ChatGPT Plugin-standard plugins for applications, or using Dify-produced plugins
 We will release plugins complying with ChatGPT standard, or Dify's own plugins to enable more capabilities in applications. 
-- **Open-source models**, e.g. adopting Llama as a model provider or for further fine-tuning
-We will work with excellent open-source models like Llama, by providing them as model options in our platform, or using them for further fine-tuning.
 
 
 ## Q&A
@@ -133,7 +167,6 @@ To protect your privacy, please avoid posting security issues on GitHub. Instead
 This software uses the following open-source software:
 
 - Chase, H. (2022). LangChain [Computer software]. https://github.com/hwchase17/langchain
-- Liu, J. (2022). LlamaIndex [Computer software]. doi: 10.5281/zenodo.1234.
 
 For more information, please refer to the official website or license text of the respective software.
 

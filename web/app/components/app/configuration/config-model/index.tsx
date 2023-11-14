@@ -3,137 +3,188 @@ import type { FC } from 'react'
 import React, { useEffect, useState } from 'react'
 import cn from 'classnames'
 import { useTranslation } from 'react-i18next'
-import { useBoolean, useClickAway } from 'ahooks'
-import { ChevronDownIcon, Cog8ToothIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
+import { useBoolean, useClickAway, useGetState } from 'ahooks'
+import { InformationCircleIcon } from '@heroicons/react/24/outline'
+import produce from 'immer'
 import ParamItem from './param-item'
+import ModelIcon from './model-icon'
+import ModelName from './model-name'
+import ModelModeTypeLabel from './model-mode-type-label'
+import { SlidersH } from '@/app/components/base/icons/src/vender/line/mediaAndDevices'
 import Radio from '@/app/components/base/radio'
 import Panel from '@/app/components/base/panel'
 import type { CompletionParams } from '@/models/debug'
-import { AppType } from '@/types/app'
 import { TONE_LIST } from '@/config'
 import Toast from '@/app/components/base/toast'
 import { AlertTriangle } from '@/app/components/base/icons/src/vender/solid/alertsAndFeedback'
-
-export type IConifgModelProps = {
+import { formatNumber } from '@/utils/format'
+import { Brush01 } from '@/app/components/base/icons/src/vender/solid/editor'
+import { Scales02 } from '@/app/components/base/icons/src/vender/solid/FinanceAndECommerce'
+import { Target04 } from '@/app/components/base/icons/src/vender/solid/general'
+import { Sliders02 } from '@/app/components/base/icons/src/vender/solid/mediaAndDevices'
+import { fetchModelParams } from '@/service/debug'
+import Loading from '@/app/components/base/loading'
+import ModelSelector from '@/app/components/header/account-setting/model-page/model-selector'
+import { ModelType, ProviderEnum } from '@/app/components/header/account-setting/model-page/declarations'
+import { useProviderContext } from '@/context/provider-context'
+import type { ModelModeType } from '@/types/app'
+export type IConfigModelProps = {
+  isAdvancedMode: boolean
   mode: string
   modelId: string
-  setModelId: (id: string) => void
+  provider: ProviderEnum
+  setModel: (model: { id: string; provider: ProviderEnum; mode: ModelModeType; features: string[] }) => void
   completionParams: CompletionParams
   onCompletionParamsChange: (newParams: CompletionParams) => void
   disabled: boolean
-  canUseGPT4: boolean
-  onShowUseGPT4Confirm: () => void
 }
 
-const options = [
-  { id: 'gpt-3.5-turbo', name: 'gpt-3.5-turbo', type: AppType.chat },
-  { id: 'gpt-3.5-turbo-16k', name: 'gpt-3.5-turbo-16k', type: AppType.chat },
-  { id: 'gpt-4', name: 'gpt-4', type: AppType.chat }, // 8k version
-  { id: 'gpt-3.5-turbo', name: 'gpt-3.5-turbo', type: AppType.completion },
-  { id: 'gpt-3.5-turbo-16k', name: 'gpt-3.5-turbo-16k', type: AppType.completion },
-  { id: 'text-davinci-003', name: 'text-davinci-003', type: AppType.completion },
-  { id: 'gpt-4', name: 'gpt-4', type: AppType.completion }, // 8k version
-]
-
-const ModelIcon = ({ className }: { className?: string }) => (
-  <svg className={`w-4 h-4 ${className}`} width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect width="20" height="20" rx="6" fill="black" />
-    <path d="M16.5963 9.65729C16.748 9.99569 16.8443 10.3574 16.8836 10.7265C16.9216 11.0955 16.9026 11.4689 16.8238 11.8321C16.7465 12.1953 16.6123 12.5439 16.4256 12.8648C16.3031 13.0793 16.1587 13.2805 15.9924 13.4658C15.8276 13.6496 15.6438 13.8159 15.444 13.9617C15.2427 14.1076 15.0283 14.2301 14.8007 14.3308C14.5746 14.4299 14.3383 14.5058 14.0962 14.5554C13.9824 14.9084 13.8132 15.2424 13.5944 15.5429C13.3771 15.8434 13.1131 16.1074 12.8126 16.3247C12.5121 16.5435 12.1795 16.7127 11.8266 16.8265C11.4736 16.9417 11.1045 16.9986 10.7326 16.9986C10.4861 17.0001 10.2381 16.9738 9.99596 16.9242C9.75529 16.8732 9.51899 16.7959 9.2929 16.6952C9.06681 16.5946 8.85239 16.4691 8.65256 16.3233C8.45418 16.1774 8.2704 16.0097 8.10703 15.8244C7.74237 15.9032 7.36896 15.9221 6.99992 15.8842C6.63089 15.8448 6.26914 15.7486 5.92928 15.5969C5.59088 15.4466 5.27727 15.2424 5.00159 14.993C4.72591 14.7436 4.49107 14.4518 4.30582 14.1309C4.18184 13.9165 4.07973 13.6904 4.00242 13.4556C3.92511 13.2207 3.87406 12.9786 3.84781 12.7321C3.82155 12.487 3.82301 12.2391 3.84927 11.9926C3.87552 11.7475 3.92949 11.5054 4.0068 11.2705C3.75883 10.9949 3.55462 10.6813 3.40292 10.3428C3.25268 10.003 3.15495 9.6427 3.11703 9.27367C3.07765 8.90463 3.09807 8.53122 3.17538 8.16802C3.25268 7.80482 3.38688 7.4562 3.57358 7.1353C3.69611 6.92088 3.84051 6.71813 4.00534 6.53434C4.17017 6.35056 4.35541 6.18427 4.55525 6.03841C4.75508 5.89254 4.97096 5.76856 5.19705 5.66937C5.42459 5.56873 5.66089 5.49434 5.90303 5.44474C6.0168 5.09029 6.186 4.75772 6.40334 4.45725C6.62213 4.15677 6.88615 3.89275 7.18663 3.67396C7.48711 3.45662 7.81968 3.28742 8.17267 3.17219C8.52566 3.05841 8.89469 3.00007 9.26664 3.00153C9.51315 3.00007 9.76112 3.02486 10.0033 3.07592C10.2454 3.12697 10.4817 3.20282 10.7078 3.30346C10.9339 3.40557 11.1483 3.52955 11.3481 3.67542C11.548 3.82274 11.7317 3.98902 11.8951 4.17427C12.2583 4.09696 12.6317 4.078 13.0008 4.11592C13.3698 4.15385 13.7301 4.25158 14.0699 4.40182C14.4083 4.55352 14.7219 4.75627 14.9976 5.00569C15.2733 5.25366 15.5082 5.54393 15.6934 5.86629C15.8174 6.07925 15.9195 6.30534 15.9968 6.54164C16.0741 6.77648 16.1266 7.01861 16.1514 7.26512C16.1777 7.51163 16.1777 7.7596 16.15 8.00611C16.1237 8.25262 16.0697 8.49475 15.9924 8.72959C16.2418 9.00528 16.4446 9.31742 16.5963 9.65729ZM11.7361 15.8842C12.0541 15.7529 12.3429 15.5589 12.5865 15.3153C12.8301 15.0717 13.0241 14.7829 13.1554 14.4635C13.2866 14.1455 13.3552 13.8042 13.3552 13.46V10.2072C13.3542 10.2043 13.3533 10.2009 13.3523 10.197C13.3513 10.1941 13.3499 10.1911 13.3479 10.1882C13.346 10.1853 13.3435 10.1829 13.3406 10.1809C13.3377 10.178 13.3348 10.1761 13.3319 10.1751L12.1547 9.49538V13.4249C12.1547 13.4643 12.1489 13.5052 12.1387 13.5431C12.1285 13.5825 12.1139 13.6189 12.0935 13.654C12.0731 13.689 12.0497 13.7211 12.0206 13.7488C11.9922 13.777 11.9603 13.8015 11.9257 13.8217L9.13828 15.4306C9.11495 15.4452 9.07556 15.4656 9.05514 15.4772C9.17037 15.575 9.29582 15.661 9.42709 15.7369C9.55983 15.8127 9.69694 15.8769 9.83989 15.9294C9.98284 15.9805 10.1302 16.0199 10.2789 16.0461C10.4292 16.0724 10.5809 16.0855 10.7326 16.0855C11.0768 16.0855 11.4181 16.0169 11.7361 15.8842ZM5.09786 13.6758C5.27144 13.9749 5.50044 14.2345 5.77321 14.4445C6.04743 14.6546 6.35812 14.8077 6.69069 14.8967C7.02326 14.9857 7.37042 15.009 7.71174 14.9638C8.05306 14.9186 8.38125 14.8077 8.68027 14.6356L11.4984 13.0092L11.5057 13.0019C11.5076 13 11.5091 12.9971 11.51 12.9932C11.512 12.9903 11.5134 12.9874 11.5144 12.9844V11.6133L8.11286 13.581C8.07786 13.6014 8.04139 13.616 8.00346 13.6277C7.96408 13.6379 7.9247 13.6423 7.88386 13.6423C7.84447 13.6423 7.80509 13.6379 7.76571 13.6277C7.72778 13.616 7.68986 13.6014 7.65485 13.581L4.86739 11.9707C4.8426 11.9561 4.80613 11.9342 4.78571 11.9211C4.75946 12.0713 4.74633 12.223 4.74633 12.3747C4.74633 12.5264 4.76091 12.6781 4.78717 12.8284C4.81342 12.9771 4.85427 13.1245 4.90532 13.2674C4.95783 13.4104 5.02201 13.5475 5.09786 13.6788V13.6758ZM4.36562 7.59332C4.1935 7.89234 4.08265 8.22199 4.03743 8.56331C3.99221 8.90463 4.01555 9.25033 4.10453 9.58436C4.1935 9.91692 4.34666 10.2276 4.5567 10.5018C4.76675 10.7746 5.02784 11.0036 5.32541 11.1757L8.14204 12.8036C8.14495 12.8045 8.14836 12.8055 8.15225 12.8065H8.16246C8.16635 12.8065 8.16975 12.8055 8.17267 12.8036C8.17558 12.8026 8.1785 12.8011 8.18142 12.7992L9.36291 12.1165L5.96137 10.1532C5.92782 10.1328 5.89573 10.108 5.86656 10.0803C5.8383 10.0519 5.81379 10.0201 5.79363 9.98548C5.77467 9.95047 5.75862 9.91401 5.74841 9.87462C5.7382 9.8367 5.73237 9.79732 5.73383 9.75647V6.44391C5.59088 6.49642 5.45231 6.5606 5.32103 6.63645C5.18975 6.71376 5.06577 6.80128 4.94908 6.899C4.83385 6.99673 4.72591 7.10467 4.62818 7.22136C4.53045 7.3366 4.44439 7.46204 4.36854 7.59332H4.36562ZM14.0408 9.84545C14.0758 9.86587 14.1079 9.88921 14.137 9.91838C14.1647 9.9461 14.1895 9.97819 14.21 10.0132C14.2289 10.0482 14.245 10.0861 14.2552 10.1241C14.2639 10.1634 14.2698 10.2028 14.2683 10.2437V13.5562C14.7365 13.3841 15.145 13.0822 15.4469 12.6854C15.7503 12.2887 15.9326 11.8146 15.9749 11.3187C16.0172 10.8227 15.918 10.3239 15.6876 9.88192C15.4571 9.43995 15.1056 9.07237 14.6738 8.82441L11.8572 7.19657C11.8543 7.19559 11.8509 7.19462 11.847 7.19365H11.8368C11.8338 7.19462 11.8304 7.19559 11.8266 7.19657C11.8236 7.19754 11.8207 7.199 11.8178 7.20094L10.6421 7.88067L14.0437 9.84545H14.0408ZM15.215 8.0805H15.2135V8.08196L15.215 8.0805ZM15.2135 8.07904C15.2981 7.58894 15.2412 7.08425 15.0487 6.62478C14.8576 6.16531 14.5382 5.77002 14.1297 5.48413C13.7213 5.19969 13.24 5.03632 12.7426 5.01445C12.2437 4.99402 11.7507 5.11509 11.3189 5.36306L8.50232 6.98944C8.4994 6.99138 8.49697 6.99382 8.49503 6.99673L8.48919 7.00549C8.48822 7.0084 8.48725 7.01181 8.48627 7.0157C8.4853 7.01861 8.48482 7.02202 8.48482 7.02591V8.38536L11.8864 6.42057C11.9214 6.40015 11.9593 6.38556 11.9972 6.37389C12.0366 6.36368 12.076 6.35931 12.1154 6.35931C12.1562 6.35931 12.1956 6.36368 12.235 6.37389C12.2729 6.38556 12.3094 6.40015 12.3444 6.42057L15.1318 8.03091C15.1566 8.04549 15.1931 8.06591 15.2135 8.07904ZM7.84301 6.57373C7.84301 6.53434 7.84885 6.49496 7.85906 6.45558C7.86927 6.41765 7.88386 6.37973 7.90428 6.34472C7.9247 6.31117 7.94804 6.27908 7.97721 6.24991C8.00492 6.2222 8.03701 6.1974 8.07202 6.17844L10.8595 4.56956C10.8857 4.55352 10.9222 4.53309 10.9426 4.52288C10.5605 4.20344 10.0937 3.99923 9.59921 3.93651C9.10474 3.87233 8.60296 3.9511 8.15225 4.1626C7.70007 4.3741 7.3179 4.71105 7.05097 5.13114C6.78404 5.55268 6.64256 6.03987 6.64256 6.53872V9.79148C6.64353 9.79537 6.6445 9.79878 6.64547 9.80169C6.64645 9.80461 6.6479 9.80753 6.64985 9.81044C6.65179 9.81336 6.65422 9.81628 6.65714 9.8192C6.65909 9.82114 6.662 9.82309 6.66589 9.82503L7.84301 10.5048V6.57373ZM8.4819 10.8723L9.99742 11.7475L11.5129 10.8723V9.12343L9.99888 8.24824L8.48336 9.12343L8.4819 10.8723Z" fill="white" />
-  </svg>
-)
-
-const ConifgModel: FC<IConifgModelProps> = ({
-  mode,
+const ConfigModel: FC<IConfigModelProps> = ({
+  isAdvancedMode,
   modelId,
-  setModelId,
+  provider,
+  setModel,
   completionParams,
   onCompletionParamsChange,
   disabled,
-  canUseGPT4,
-  onShowUseGPT4Confirm,
 }) => {
   const { t } = useTranslation()
-  const isChatApp = mode === AppType.chat
-  const availableModels = options.filter(item => item.type === mode)
+  const { textGenerationModelList } = useProviderContext()
   const [isShowConfig, { setFalse: hideConfig, toggle: toogleShowConfig }] = useBoolean(false)
   const [maxTokenSettingTipVisible, setMaxTokenSettingTipVisible] = useState(false)
   const configContentRef = React.useRef(null)
+  const currModel = textGenerationModelList.find(item => item.model_name === modelId)
+  // Cache loaded model param
+  const [allParams, setAllParams, getAllParams] = useGetState<Record<string, Record<string, any>>>({})
+  const currParams = allParams[provider]?.[modelId]
+  const hasEnableParams = currParams && Object.keys(currParams).some(key => currParams[key].enabled)
+  const allSupportParams = ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'max_tokens']
+  const currSupportParams = currParams ? allSupportParams.filter(key => currParams[key].enabled) : allSupportParams
+  if (isAdvancedMode)
+    currSupportParams.push('stop')
+
+  useEffect(() => {
+    (async () => {
+      if (!allParams[provider]?.[modelId]) {
+        const res = await fetchModelParams(provider, modelId)
+        const newAllParams = produce(allParams, (draft) => {
+          if (!draft[provider])
+            draft[provider] = {}
+
+          draft[provider][modelId] = res
+        })
+        setAllParams(newAllParams)
+      }
+    })()
+  }, [provider, modelId])
+
   useClickAway(() => {
     hideConfig()
   }, configContentRef)
 
-  const params = [
-    {
-      id: 1,
-      name: t('common.model.params.temperature'),
-      key: 'temperature',
-      tip: t('common.model.params.temperatureTip'),
-      max: 2,
-    },
-    {
-      id: 2,
-      name: t('common.model.params.topP'),
-      key: 'top_p',
-      tip: t('common.model.params.topPTip'),
-      max: 1,
-    },
-    {
-      id: 3,
-      name: t('common.model.params.presencePenalty'),
-      key: 'presence_penalty',
-      tip: t('common.model.params.presencePenaltyTip'),
-      min: -2,
-      max: 2,
-    },
-    {
-      id: 4,
-      name: t('common.model.params.frequencyPenalty'),
-      key: 'frequency_penalty',
-      tip: t('common.model.params.frequencyPenaltyTip'),
-      min: -2,
-      max: 2,
-    },
-    {
-      id: 5,
-      name: t('common.model.params.maxToken'),
-      key: 'max_tokens',
-      tip: t('common.model.params.maxTokenTip'),
-      step: 100,
-      max: (modelId === 'gpt-4' || modelId === 'gpt-3.5-turbo-16k') ? 8000 : 4000,
-    },
-  ]
-
-  const selectModelDisabled = false // chat  gpt-3.5-turbo, gpt-4; text generation text-davinci-003, gpt-3.5-turbo
-
   const selectedModel = { name: modelId } // options.find(option => option.id === modelId)
-  const [isShowOption, { setFalse: hideOption, toggle: toogleOption }] = useBoolean(false)
-  const triggerRef = React.useRef(null)
-  useClickAway(() => {
-    hideOption()
-  }, triggerRef)
 
-  const handleSelectModel = (id: string) => {
-    return () => {
-      if (id === 'gpt-4' && !canUseGPT4) {
-        hideConfig()
-        hideOption()
-        onShowUseGPT4Confirm()
+  const ensureModelParamLoaded = (provider: ProviderEnum, modelId: string) => {
+    return new Promise<void>((resolve) => {
+      if (getAllParams()[provider]?.[modelId]) {
+        resolve()
         return
       }
-      if (id !== 'gpt-4' && completionParams.max_tokens > 4000) {
-        Toast.notify({
-          type: 'warning',
-          message: t('common.model.params.setToCurrentModelMaxTokenTip'),
+      const runId = setInterval(() => {
+        if (getAllParams()[provider]?.[modelId]) {
+          resolve()
+          clearInterval(runId)
+        }
+      }, 500)
+    })
+  }
+
+  const transformValue = (value: number, fromRange: [number, number], toRange: [number, number]): number => {
+    const [fromStart = 0, fromEnd] = fromRange
+    const [toStart = 0, toEnd] = toRange
+
+    // The following three if is to avoid precision loss
+    if (fromStart === toStart && fromEnd === toEnd)
+      return value
+
+    if (value <= fromStart)
+      return toStart
+
+    if (value >= fromEnd)
+      return toEnd
+
+    const fromLength = fromEnd - fromStart
+    const toLength = toEnd - toStart
+
+    let adjustedValue = (value - fromStart) * (toLength / fromLength) + toStart
+    adjustedValue = parseFloat(adjustedValue.toFixed(2))
+    return adjustedValue
+  }
+
+  const handleSelectModel = ({ id, provider: nextProvider, mode, features }: { id: string; provider: ProviderEnum; mode: ModelModeType; features: string[] }) => {
+    return async () => {
+      const prevParamsRule = getAllParams()[provider]?.[modelId]
+
+      setModel({
+        id,
+        provider: nextProvider || ProviderEnum.openai,
+        mode,
+        features,
+      })
+
+      await ensureModelParamLoaded(nextProvider, id)
+
+      const nextParamsRule = getAllParams()[nextProvider]?.[id]
+      // debugger
+      const nextSelectModelMaxToken = nextParamsRule.max_tokens.max
+      const newConCompletionParams = produce(completionParams, (draft: any) => {
+        if (nextParamsRule.max_tokens.enabled) {
+          if (completionParams.max_tokens > nextSelectModelMaxToken) {
+            Toast.notify({
+              type: 'warning',
+              message: t('common.model.params.setToCurrentModelMaxTokenTip', { maxToken: formatNumber(nextSelectModelMaxToken) }),
+            })
+            draft.max_tokens = parseFloat((nextSelectModelMaxToken * 0.8).toFixed(2))
+          }
+          // prev don't have max token
+          if (!completionParams.max_tokens)
+            draft.max_tokens = nextParamsRule.max_tokens.default
+        }
+        else {
+          delete draft.max_tokens
+        }
+
+        allSupportParams.forEach((key) => {
+          if (key === 'max_tokens')
+            return
+
+          if (!nextParamsRule[key].enabled) {
+            delete draft[key]
+            return
+          }
+
+          if (draft[key] === undefined) {
+            draft[key] = nextParamsRule[key].default || 0
+            return
+          }
+
+          if (!prevParamsRule[key].enabled) {
+            draft[key] = nextParamsRule[key].default || 0
+            return
+          }
+
+          draft[key] = transformValue(
+            draft[key],
+            [prevParamsRule[key].min, prevParamsRule[key].max],
+            [nextParamsRule[key].min, nextParamsRule[key].max],
+          )
         })
-        onCompletionParamsChange({
-          ...completionParams,
-          max_tokens: 4000,
-        })
-      }
-      setModelId(id)
+      })
+      onCompletionParamsChange(newConCompletionParams)
     }
   }
 
+  // only openai support this
   function matchToneId(completionParams: CompletionParams): number {
     const remvoedCustomeTone = TONE_LIST.slice(0, -1)
     const CUSTOM_TONE_ID = 4
@@ -148,6 +199,11 @@ const ConifgModel: FC<IConifgModelProps> = ({
 
   // tone is a preset of completionParams.
   const [toneId, setToneId] = React.useState(matchToneId(completionParams)) // default is Balanced
+  const toneTabBgClassName = ({
+    1: 'bg-[#F5F8FF]',
+    2: 'bg-[#F4F3FF]',
+    3: 'bg-[#F6FEFC]',
+  })[toneId] || ''
   // set completionParams by toneId
   const handleToneChange = (id: number) => {
     if (id === 4)
@@ -166,40 +222,73 @@ const ConifgModel: FC<IConifgModelProps> = ({
     setToneId(matchToneId(completionParams))
   }, [completionParams])
 
-  const handleParamChange = (id: number, value: number) => {
-    const key = params.find(item => item.id === id)?.key
+  const handleParamChange = (key: string, value: number | string[]) => {
+    if (value === undefined)
+      return
+    if ((completionParams as any)[key] === value)
+      return
 
-    if (key) {
+    if (key === 'stop') {
       onCompletionParamsChange({
         ...completionParams,
-        [key]: value,
+        [key]: value as string[],
+      })
+    }
+    else {
+      const currParamsRule = getAllParams()[provider]?.[modelId]
+      let notOutRangeValue = parseFloat((value as number).toFixed(2))
+      notOutRangeValue = Math.max(currParamsRule[key].min, notOutRangeValue)
+      notOutRangeValue = Math.min(currParamsRule[key].max, notOutRangeValue)
+      onCompletionParamsChange({
+        ...completionParams,
+        [key]: notOutRangeValue,
       })
     }
   }
   const ableStyle = 'bg-indigo-25 border-[#2A87F5] cursor-pointer'
   const diabledStyle = 'bg-[#FFFCF5] border-[#F79009]'
 
+  const getToneIcon = (toneId: number) => {
+    const className = 'w-[14px] h-[14px]'
+    const res = ({
+      1: <Brush01 className={className} />,
+      2: <Scales02 className={className} />,
+      3: <Target04 className={className} />,
+      4: <Sliders02 className={className} />,
+    })[toneId]
+    return res
+  }
   useEffect(() => {
-    const max = params[4].max
-    if (completionParams.max_tokens > max * 2 / 3)
+    if (!currParams)
+      return
+
+    const max = currParams.max_tokens.max
+    const isSupportMaxToken = currParams.max_tokens.enabled
+    if (isSupportMaxToken && currModel?.model_provider.provider_name !== ProviderEnum.anthropic && completionParams.max_tokens > max * 2 / 3)
       setMaxTokenSettingTipVisible(true)
     else
       setMaxTokenSettingTipVisible(false)
-  }, [params, completionParams.max_tokens, setMaxTokenSettingTipVisible])
-
+  }, [currParams, completionParams.max_tokens, setMaxTokenSettingTipVisible])
   return (
     <div className='relative' ref={configContentRef}>
       <div
-        className={cn('flex items-center border h-8 px-2.5 space-x-2 rounded-lg', disabled ? diabledStyle : ableStyle)}
+        className={cn('flex items-center border h-8 px-2 space-x-2 rounded-lg', disabled ? diabledStyle : ableStyle)}
         onClick={() => !disabled && toogleShowConfig()}
       >
-        <ModelIcon />
-        <div className='text-[13px] text-gray-900 font-medium'>{selectedModel.name}</div>
-        {disabled ? <InformationCircleIcon className='w-3.5 h-3.5 text-[#F79009]' /> : <Cog8ToothIcon className='w-3.5 h-3.5 text-gray-500' />}
+        <ModelIcon
+          className='!w-5 !h-5'
+          modelId={modelId}
+          providerName={provider}
+        />
+        <div className='text-[13px] text-gray-900 font-medium'>
+          <ModelName modelId={selectedModel.name} modelDisplayName={currModel?.model_display_name} />
+        </div>
+        {isAdvancedMode && <ModelModeTypeLabel type={currModel?.model_mode as ModelModeType} isHighlight />}
+        {disabled ? <InformationCircleIcon className='w-4 h-4 text-[#F79009]' /> : <SlidersH className='w-4 h-4 text-indigo-600' />}
       </div>
       {isShowConfig && (
         <Panel
-          className='absolute z-20 top-8 right-0 !w-[496px] bg-white'
+          className='absolute z-20 top-8 right-0 !w-[496px] bg-white !overflow-visible shadow-md'
           keepUnFold
           headerIcon={
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -217,49 +306,96 @@ const ConifgModel: FC<IConifgModelProps> = ({
           <div className='py-3 pl-10 pr-6 text-sm'>
             <div className="flex items-center justify-between my-5 h-9">
               <div>{t('appDebug.modelConfig.model')}</div>
-              {/* model selector */}
-              <div className="relative" style={{ zIndex: 30 }}>
-                <div ref={triggerRef} onClick={() => !selectModelDisabled && toogleOption()} className={cn(selectModelDisabled ? 'cursor-not-allowed' : 'cursor-pointer', 'flex items-center h-9 px-3 space-x-2 rounded-lg bg-gray-50 ')}>
-                  <ModelIcon />
-                  <div className="text-sm gray-900">{selectedModel?.name}</div>
-                  {!selectModelDisabled && <ChevronDownIcon className={cn(isShowOption && 'rotate-180', 'w-[14px] h-[14px] text-gray-500')} />}
-                </div>
-                {isShowOption && (
-                  <div className={cn(isChatApp ? 'min-w-[159px]' : 'w-[179px]', 'absolute right-0 bg-gray-50 rounded-lg shadow')}>
-                    {availableModels.map(item => (
-                      <div key={item.id} onClick={handleSelectModel(item.id)} className="flex items-center h-9 px-3 rounded-lg cursor-pointer hover:bg-gray-100">
-                        <ModelIcon className='shrink-0 mr-2' />
-                        <div className="text-sm gray-900 whitespace-nowrap">{item.name}</div>
+              <ModelSelector
+                isShowModelModeType={isAdvancedMode}
+                isShowAddModel
+                popClassName='right-0'
+                triggerIconSmall
+                value={{
+                  modelName: modelId,
+                  providerName: provider,
+                }}
+                modelType={ModelType.textGeneration}
+                onChange={(model) => {
+                  handleSelectModel({
+                    id: model.model_name,
+                    provider: model.model_provider.provider_name as ProviderEnum,
+                    mode: model.model_mode,
+                    features: model.features,
+                  })()
+                }}
+              />
+            </div>
+            {hasEnableParams && (
+              <div className="border-b border-gray-100"></div>
+            )}
+
+            {/* Tone type */}
+            {[ProviderEnum.openai, ProviderEnum.azure_openai].includes(provider) && (
+              <div className="mt-5 mb-4">
+                <div className="mb-3 text-sm text-gray-900">{t('appDebug.modelConfig.setTone')}</div>
+                <Radio.Group className={cn('!rounded-lg', toneTabBgClassName)} value={toneId} onChange={handleToneChange}>
+                  <>
+                    {TONE_LIST.slice(0, 3).map(tone => (
+                      <div className='grow flex items-center' key={tone.id}>
+                        <Radio
+                          value={tone.id}
+                          className={cn(tone.id === toneId && 'rounded-md border border-gray-200 shadow-md', '!mr-0 grow !px-2 !justify-center text-[13px] font-medium')}
+                          labelClassName={cn(tone.id === toneId
+                            ? ({
+                              1: 'text-[#6938EF]',
+                              2: 'text-[#444CE7]',
+                              3: 'text-[#107569]',
+                            })[toneId]
+                            : 'text-[#667085]', 'flex items-center space-x-2')}
+                        >
+                          <>
+                            {getToneIcon(tone.id)}
+                            <div>{t(`common.model.tone.${tone.name}`) as string}</div>
+                            <div className=""></div>
+                          </>
+                        </Radio>
+                        {tone.id !== toneId && tone.id + 1 !== toneId && (<div className='h-5 border-r border-gray-200'></div>)}
                       </div>
                     ))}
-                  </div>
-                )}
+                  </>
+                  <Radio
+                    value={TONE_LIST[3].id}
+                    className={cn(toneId === 4 && 'rounded-md border border-gray-200 shadow-md', '!mr-0 grow !px-2 !justify-center text-[13px] font-medium')}
+                    labelClassName={cn('flex items-center space-x-2 ', toneId === 4 ? 'text-[#155EEF]' : 'text-[#667085]')}
+                  >
+                    <>
+                      {getToneIcon(TONE_LIST[3].id)}
+                      <div>{t(`common.model.tone.${TONE_LIST[3].name}`) as string}</div>
+                    </>
+                  </Radio>
+                </Radio.Group>
               </div>
-            </div>
-            <div className="border-b border-gray-100"></div>
-
-            {/* Response type */}
-            <div className="mt-5 mb-4">
-              <div className="mb-4 text-sm text-gray-900">{t('appDebug.modelConfig.setTone')}</div>
-              <Radio.Group value={toneId} onChange={handleToneChange}>
-                <>
-                  {TONE_LIST.slice(0, 3).map(tone => (
-                    <Radio key={tone.id} value={tone.id} className="grow !px-0 !justify-center">{t(`common.model.tone.${tone.name}`) as string}</Radio>
-                  ))}
-                </>
-                <div className="ml-[2px] mr-[3px] h-5 border-r border-gray-200"></div>
-                <Radio value={TONE_LIST[3].id}>{t(`common.model.tone.${TONE_LIST[3].name}`) as string}</Radio>
-              </Radio.Group>
-            </div>
+            )}
 
             {/* Params */}
-            <div className="mt-4 space-y-4">
-              {params.map(({ key, ...param }) => (<ParamItem key={key} {...param} value={(completionParams as any)[key] as any} onChange={handleParamChange} />))}
+            <div className={cn(hasEnableParams && 'mt-4', 'space-y-4', !allParams[provider]?.[modelId] && 'flex items-center min-h-[200px]')}>
+              {(allParams[provider]?.[modelId])
+                ? (
+                  currSupportParams.map(key => (<ParamItem
+                    key={key}
+                    id={key}
+                    name={t(`common.model.params.${key === 'stop' ? 'stop_sequences' : key}`)}
+                    tip={t(`common.model.params.${key === 'stop' ? 'stop_sequences' : key}Tip`)}
+                    {...currParams[key] as any}
+                    value={(completionParams as any)[key] as any}
+                    onChange={handleParamChange}
+                    inputType={key === 'stop' ? 'inputTag' : 'slider'}
+                  />))
+                )
+                : (
+                  <Loading type='area' />
+                )}
             </div>
           </div>
           {
             maxTokenSettingTipVisible && (
-              <div className='flex py-2 pr-4 pl-5 bg-[#FFFAEB] border-t border-[#FEF0C7]'>
+              <div className='flex py-2 pr-4 pl-5 rounded-bl-xl rounded-br-xl bg-[#FFFAEB] border-t border-[#FEF0C7]'>
                 <AlertTriangle className='shrink-0 mr-2 mt-[3px] w-3 h-3 text-[#F79009]' />
                 <div className='mr-2 text-xs font-medium text-gray-700'>{t('common.model.params.maxTokenSettingTip')}</div>
               </div>
@@ -272,4 +408,4 @@ const ConifgModel: FC<IConifgModelProps> = ({
   )
 }
 
-export default React.memo(ConifgModel)
+export default React.memo(ConfigModel)

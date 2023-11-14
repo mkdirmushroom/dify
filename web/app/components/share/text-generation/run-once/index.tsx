@@ -9,25 +9,35 @@ import type { SiteInfo } from '@/models/share'
 import type { PromptConfig } from '@/models/debug'
 import Button from '@/app/components/base/button'
 import { DEFAULT_VALUE_MAX_LEN } from '@/config'
+import TextGenerationImageUploader from '@/app/components/base/image-uploader/text-generation-image-uploader'
+import type { VisionFile, VisionSettings } from '@/types/app'
 
 export type IRunOnceProps = {
   siteInfo: SiteInfo
   promptConfig: PromptConfig
   inputs: Record<string, any>
   onInputsChange: (inputs: Record<string, any>) => void
-  query: string
-  onQueryChange: (query: string) => void
   onSend: () => void
+  visionConfig: VisionSettings
+  onVisionFilesChange: (files: VisionFile[]) => void
 }
 const RunOnce: FC<IRunOnceProps> = ({
   promptConfig,
   inputs,
   onInputsChange,
-  query,
-  onQueryChange,
   onSend,
+  visionConfig,
+  onVisionFilesChange,
 }) => {
   const { t } = useTranslation()
+
+  const onClear = () => {
+    const newInputs: Record<string, any> = {}
+    promptConfig.prompt_variables.forEach((item) => {
+      newInputs[item.key] = ''
+    })
+    onInputsChange(newInputs)
+  }
 
   return (
     <div className="">
@@ -38,61 +48,76 @@ const RunOnce: FC<IRunOnceProps> = ({
             <div className='w-full mt-4' key={item.key}>
               <label className='text-gray-900 text-sm font-medium'>{item.name}</label>
               <div className='mt-2'>
-                {item.type === 'select'
-                  ? (
-                    <Select
-                      className='w-full'
-                      defaultValue={inputs[item.key]}
-                      onSelect={(i) => { onInputsChange({ ...inputs, [item.key]: i.value }) }}
-                      items={(item.options || []).map(i => ({ name: i, value: i }))}
-                      allowSearch={false}
-                      bgClassName='bg-gray-50'
-                    />
-                  )
-                  : (
-                    <input
-                      type="text"
-                      className="block w-full p-2 text-gray-900 border border-gray-300 rounded-lg bg-gray-50 sm:text-xs focus:ring-blue-500 focus:border-blue-500 "
-                      placeholder={`${item.name}${!item.required ? `(${t('appDebug.variableTable.optional')})` : ''}`}
-                      value={inputs[item.key]}
-                      onChange={(e) => { onInputsChange({ ...inputs, [item.key]: e.target.value }) }}
-                      maxLength={item.max_length || DEFAULT_VALUE_MAX_LEN}
-                    />
-                  )}
+                {item.type === 'select' && (
+                  <Select
+                    className='w-full'
+                    defaultValue={inputs[item.key]}
+                    onSelect={(i) => { onInputsChange({ ...inputs, [item.key]: i.value }) }}
+                    items={(item.options || []).map(i => ({ name: i, value: i }))}
+                    allowSearch={false}
+                    bgClassName='bg-gray-50'
+                  />
+                )}
+                {item.type === 'string' && (
+                  <input
+                    type="text"
+                    className="block w-full p-2 text-gray-900 border border-gray-300 rounded-lg bg-gray-50 sm:text-xs focus:ring-blue-500 focus:border-blue-500 "
+                    placeholder={`${item.name}${!item.required ? `(${t('appDebug.variableTable.optional')})` : ''}`}
+                    value={inputs[item.key]}
+                    onChange={(e) => { onInputsChange({ ...inputs, [item.key]: e.target.value }) }}
+                    maxLength={item.max_length || DEFAULT_VALUE_MAX_LEN}
+                  />
+                )}
+                {item.type === 'paragraph' && (
+                  <textarea
+                    className="block w-full h-[104px] p-2 text-gray-900 border border-gray-300 rounded-lg bg-gray-50 sm:text-xs focus:ring-blue-500 focus:border-blue-500 "
+                    placeholder={`${item.name}${!item.required ? `(${t('appDebug.variableTable.optional')})` : ''}`}
+                    value={inputs[item.key]}
+                    onChange={(e) => { onInputsChange({ ...inputs, [item.key]: e.target.value }) }}
+                  />
+                )}
               </div>
             </div>
           ))}
-          {promptConfig.prompt_variables.length > 0 && (
-            <div className='mt-6 h-[1px] bg-gray-100'></div>
-          )}
-          <div className='w-full mt-5'>
-            <label className='text-gray-900 text-sm font-medium'>{t('share.generation.queryTitle')}</label>
-            <div className="mt-2 overflow-hidden rounded-lg bg-gray-50 ">
-              <div className="px-4 py-2 bg-gray-50 rounded-t-lg">
-                <textarea
-                  value={query}
-                  onChange={(e) => { onQueryChange(e.target.value) }}
-                  rows={4}
-                  className="w-full px-0 text-sm text-gray-900 border-0 bg-gray-50 focus:outline-none placeholder:bg-gray-50"
-                  placeholder={t('share.generation.queryPlaceholder') as string}
-                  required
-                >
-                </textarea>
-              </div>
-              <div className="flex items-center justify-between px-3 py-2">
-                <div className="flex pl-0 space-x-1 sm:pl-2">
-                  <span className="bg-gray-100 text-gray-500 text-xs font-medium mr-2 px-2.5 py-0.5 rounded cursor-pointer">{query?.length}</span>
+          {
+            visionConfig?.enabled && (
+              <div className="w-full mt-4">
+                <div className="text-gray-900 text-sm font-medium">Image Upload</div>
+                <div className='mt-2'>
+                  <TextGenerationImageUploader
+                    settings={visionConfig}
+                    onFilesChange={files => onVisionFilesChange(files.filter(file => file.progress !== -1).map(fileItem => ({
+                      type: 'image',
+                      transfer_method: fileItem.type,
+                      url: fileItem.url,
+                      upload_file_id: fileItem.fileId,
+                    })))}
+                  />
                 </div>
-                <Button
-                  type="primary"
-                  className='!h-8 !pl-3 !pr-4'
-                  onClick={onSend}
-                  disabled={!query || query === ''}
-                >
-                  <PlayIcon className="shrink-0 w-4 h-4 mr-1" aria-hidden="true" />
-                  <span className='uppercase text-[13px]'>{t('share.generation.run')}</span>
-                </Button>
               </div>
+            )
+          }
+          {promptConfig.prompt_variables.length > 0 && (
+            <div className='mt-4 h-[1px] bg-gray-100'></div>
+          )}
+          <div className='w-full mt-4'>
+            <div className="flex items-center justify-between">
+              <Button
+                className='!h-8 !p-3'
+                onClick={onClear}
+                disabled={false}
+              >
+                <span className='text-[13px]'>{t('common.operation.clear')}</span>
+              </Button>
+              <Button
+                type="primary"
+                className='!h-8 !pl-3 !pr-4'
+                onClick={onSend}
+                disabled={false}
+              >
+                <PlayIcon className="shrink-0 w-4 h-4 mr-1" aria-hidden="true" />
+                <span className='text-[13px]'>{t('share.generation.run')}</span>
+              </Button>
             </div>
           </div>
         </form>

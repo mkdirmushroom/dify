@@ -1,5 +1,6 @@
 'use client'
 import type { FC } from 'react'
+import useSWR from 'swr'
 import { useTranslation } from 'react-i18next'
 import React, { useEffect, useRef, useState } from 'react'
 import cn from 'classnames'
@@ -10,38 +11,50 @@ import dayjs from 'dayjs'
 import HasNotSetAPIKEY from '../base/warning-mask/has-not-set-api'
 import FormattingChanged from '../base/warning-mask/formatting-changed'
 import GroupName from '../base/group-name'
-import { AppType } from '@/types/app'
+import CannotQueryDataset from '../base/warning-mask/cannot-query-dataset'
+import { AppType, ModelModeType, TransferMethod } from '@/types/app'
 import PromptValuePanel, { replaceStringWithValues } from '@/app/components/app/configuration/prompt-value-panel'
-import type { IChatItem } from '@/app/components/app/chat'
+import type { IChatItem } from '@/app/components/app/chat/type'
 import Chat from '@/app/components/app/chat'
 import ConfigContext from '@/context/debug-configuration'
 import { ToastContext } from '@/app/components/base/toast'
 import { fetchConvesationMessages, fetchSuggestedQuestions, sendChatMessage, sendCompletionMessage, stopChatMessageResponding } from '@/service/debug'
 import Button from '@/app/components/base/button'
-import type { ModelConfig as BackendModelConfig } from '@/types/app'
+import type { ModelConfig as BackendModelConfig, VisionFile } from '@/types/app'
 import { promptVariablesToUserInputsForm } from '@/utils/model-config'
 import TextGeneration from '@/app/components/app/text-generate/item'
 import { IS_CE_EDITION } from '@/config'
+import { useProviderContext } from '@/context/provider-context'
+import type { Inputs } from '@/models/debug'
+import { fetchFileUploadConfig } from '@/service/common'
 
 type IDebug = {
   hasSetAPIKEY: boolean
   onSetting: () => void
+  inputs: Inputs
 }
 
 const Debug: FC<IDebug> = ({
   hasSetAPIKEY = true,
   onSetting,
+  inputs,
 }) => {
   const { t } = useTranslation()
   const {
     appId,
     mode,
+    modelModeType,
+    hasSetBlockStatus,
+    isAdvancedMode,
+    promptMode,
+    chatPromptConfig,
+    completionPromptConfig,
     introduction,
     suggestedQuestionsAfterAnswerConfig,
     speechToTextConfig,
+    citationConfig,
+    moderationConfig,
     moreLikeThisConfig,
-    inputs,
-    // setInputs,
     formattingChanged,
     setFormattingChanged,
     conversationId,
@@ -50,10 +63,15 @@ const Debug: FC<IDebug> = ({
     dataSets,
     modelConfig,
     completionParams,
+    hasSetContextVar,
+    datasetConfigs,
+    externalDataToolsConfig,
+    visionConfig,
   } = useContext(ConfigContext)
-
+  const { speech2textDefaultModel } = useProviderContext()
   const [chatList, setChatList, getChatList] = useGetState<IChatItem[]>([])
   const chatListDomRef = useRef<HTMLDivElement>(null)
+  const { data: fileUploadConfigResponse } = useSWR({ url: '/files/upload' }, fetchFileUploadConfig)
   useEffect(() => {
     // scroll to bottom
     if (chatListDomRef.current)
@@ -75,6 +93,7 @@ const Debug: FC<IDebug> = ({
   const [isResponsing, { setTrue: setResponsingTrue, setFalse: setResponsingFalse }] = useBoolean(false)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
   const [isShowFormattingChangeConfirm, setIsShowFormattingChangeConfirm] = useState(false)
+  const [isShowCannotQueryDataset, setShowCannotQueryDataset] = useState(false)
   const [isShowSuggestion, setIsShowSuggestion] = useState(false)
   const [messageTaskId, setMessageTaskId] = useState('')
   const [hasStopResponded, setHasStopResponded, getHasStopResponded] = useGetState(false)
@@ -116,22 +135,40 @@ const Debug: FC<IDebug> = ({
   }
 
   const checkCanSend = () => {
-    let hasEmptyInput = false
+    if (isAdvancedMode && mode === AppType.chat) {
+      if (modelModeType === ModelModeType.completion) {
+        if (!hasSetBlockStatus.history) {
+          notify({ type: 'error', message: t('appDebug.otherError.historyNoBeEmpty'), duration: 3000 })
+          return false
+        }
+        if (!hasSetBlockStatus.query) {
+          notify({ type: 'error', message: t('appDebug.otherError.queryNoBeEmpty'), duration: 3000 })
+          return false
+        }
+      }
+    }
+    let hasEmptyInput = ''
     const requiredVars = modelConfig.configs.prompt_variables.filter(({ key, name, required }) => {
       const res = (!key || !key.trim()) || (!name || !name.trim()) || (required || required === undefined || required === null)
       return res
     }) // compatible with old version
     // debugger
-    requiredVars.forEach(({ key }) => {
+    requiredVars.forEach(({ key, name }) => {
       if (hasEmptyInput)
         return
 
       if (!inputs[key])
-        hasEmptyInput = true
+        hasEmptyInput = name
     })
 
     if (hasEmptyInput) {
-      logError(t('appDebug.errorMessage.valueOfVarRequired'))
+      logError(t('appDebug.errorMessage.valueOfVarRequired', { key: hasEmptyInput }))
+      return false
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+    if (completionFiles.find(item => item.transfer_method === TransferMethod.local_file && !item.upload_file_id)) {
+      notify({ type: 'info', message: t('appDebug.errorMessage.waitForImgUpload') })
       return false
     }
     return !hasEmptyInput
@@ -139,9 +176,14 @@ const Debug: FC<IDebug> = ({
 
   const doShowSuggestion = isShowSuggestion && !isResponsing
   const [suggestQuestions, setSuggestQuestions] = useState<string[]>([])
-  const onSend = async (message: string) => {
+  const onSend = async (message: string, files?: VisionFile[]) => {
     if (isResponsing) {
       notify({ type: 'info', message: t('appDebug.errorMessage.waitForResponse') })
+      return false
+    }
+
+    if (files?.find(item => item.transfer_method === TransferMethod.local_file && !item.upload_file_id)) {
+      notify({ type: 'info', message: t('appDebug.errorMessage.waitForImgUpload') })
       return false
     }
 
@@ -151,16 +193,24 @@ const Debug: FC<IDebug> = ({
         id,
       },
     }))
+    const contextVar = modelConfig.configs.prompt_variables.find(item => item.is_context_var)?.key
 
     const postModelConfig: BackendModelConfig = {
-      pre_prompt: modelConfig.configs.prompt_template,
+      pre_prompt: !isAdvancedMode ? modelConfig.configs.prompt_template : '',
+      prompt_type: promptMode,
+      chat_prompt_config: {},
+      completion_prompt_config: {},
       user_input_form: promptVariablesToUserInputsForm(modelConfig.configs.prompt_variables),
+      dataset_query_variable: contextVar || '',
       opening_statement: introduction,
       more_like_this: {
         enabled: false,
       },
       suggested_questions_after_answer: suggestedQuestionsAfterAnswerConfig,
       speech_to_text: speechToTextConfig,
+      retriever_resource: citationConfig,
+      sensitive_word_avoidance: moderationConfig,
+      external_data_tools: externalDataToolsConfig,
       agent_mode: {
         enabled: true,
         tools: [...postDatasets],
@@ -168,15 +218,37 @@ const Debug: FC<IDebug> = ({
       model: {
         provider: modelConfig.provider,
         name: modelConfig.model_id,
+        mode: modelConfig.mode,
         completion_params: completionParams as any,
+      },
+      dataset_configs: datasetConfigs,
+      file_upload: {
+        image: visionConfig,
       },
     }
 
-    const data = {
+    if (isAdvancedMode) {
+      postModelConfig.chat_prompt_config = chatPromptConfig
+      postModelConfig.completion_prompt_config = completionPromptConfig
+    }
+
+    const data: Record<string, any> = {
       conversation_id: conversationId,
       inputs,
       query: message,
       model_config: postModelConfig,
+    }
+
+    if (visionConfig.enabled && files && files?.length > 0) {
+      data.files = files.map((item) => {
+        if (item.transfer_method === TransferMethod.local_file) {
+          return {
+            ...item,
+            url: '',
+          }
+        }
+        return item
+      })
     }
 
     // qustion
@@ -185,6 +257,7 @@ const Debug: FC<IDebug> = ({
       id: questionId,
       content: message,
       isAnswer: false,
+      message_files: files,
     }
 
     const placeholderAnswerId = `answer-placeholder-${Date.now()}`
@@ -198,7 +271,7 @@ const Debug: FC<IDebug> = ({
     setChatList(newList)
 
     // answer
-    const responseItem = {
+    const responseItem: IChatItem = {
       id: `${Date.now()}`,
       content: '',
       isAnswer: true,
@@ -248,6 +321,11 @@ const Debug: FC<IDebug> = ({
           setChatList(produce(getChatList(), (draft) => {
             const index = draft.findIndex(item => item.id === responseItem.id)
             if (index !== -1) {
+              const requestion = draft[index - 1]
+              draft[index - 1] = {
+                ...requestion,
+                log: newResponseItem.message,
+              }
               draft[index] = {
                 ...draft[index],
                 more: {
@@ -265,6 +343,22 @@ const Debug: FC<IDebug> = ({
           setIsShowSuggestion(true)
         }
       },
+      onMessageEnd: (messageEnd) => {
+        responseItem.citation = messageEnd.retriever_resources
+
+        const newListWithAnswer = produce(
+          getChatList().filter(item => item.id !== responseItem.id && item.id !== placeholderAnswerId),
+          (draft) => {
+            if (!draft.find(item => item.id === questionId))
+              draft.push({ ...questionItem })
+
+            draft.push({ ...responseItem })
+          })
+        setChatList(newListWithAnswer)
+      },
+      onMessageReplace: (messageReplace) => {
+        responseItem.content = messageReplace.answer
+      },
       onError() {
         setResponsingFalse()
         // role back placeholder answer
@@ -281,22 +375,23 @@ const Debug: FC<IDebug> = ({
       setChatList([])
   }, [controlClearChatMessage])
 
-  const [completionQuery, setCompletionQuery] = useState('')
   const [completionRes, setCompletionRes] = useState('')
+  const [messageId, setMessageId] = useState<string | null>(null)
 
+  const [completionFiles, setCompletionFiles] = useState<VisionFile[]>([])
   const sendTextCompletion = async () => {
     if (isResponsing) {
       notify({ type: 'info', message: t('appDebug.errorMessage.waitForResponse') })
       return false
     }
 
+    if (dataSets.length > 0 && !hasSetContextVar) {
+      setShowCannotQueryDataset(true)
+      return true
+    }
+
     if (!checkCanSend())
       return
-
-    if (!completionQuery) {
-      logError(t('appDebug.errorMessage.queryRequired'))
-      return false
-    }
 
     const postDatasets = dataSets.map(({ id }) => ({
       dataset: {
@@ -304,13 +399,21 @@ const Debug: FC<IDebug> = ({
         id,
       },
     }))
+    const contextVar = modelConfig.configs.prompt_variables.find(item => item.is_context_var)?.key
 
     const postModelConfig: BackendModelConfig = {
-      pre_prompt: modelConfig.configs.prompt_template,
+      pre_prompt: !isAdvancedMode ? modelConfig.configs.prompt_template : '',
+      prompt_type: promptMode,
+      chat_prompt_config: {},
+      completion_prompt_config: {},
       user_input_form: promptVariablesToUserInputsForm(modelConfig.configs.prompt_variables),
+      dataset_query_variable: contextVar || '',
       opening_statement: introduction,
       suggested_questions_after_answer: suggestedQuestionsAfterAnswerConfig,
       speech_to_text: speechToTextConfig,
+      retriever_resource: citationConfig,
+      sensitive_word_avoidance: moderationConfig,
+      external_data_tools: externalDataToolsConfig,
       more_like_this: moreLikeThisConfig,
       agent_mode: {
         enabled: true,
@@ -319,23 +422,50 @@ const Debug: FC<IDebug> = ({
       model: {
         provider: modelConfig.provider,
         name: modelConfig.model_id,
+        mode: modelConfig.mode,
         completion_params: completionParams as any,
+      },
+      dataset_configs: datasetConfigs,
+      file_upload: {
+        image: visionConfig,
       },
     }
 
-    const data = {
+    if (isAdvancedMode) {
+      postModelConfig.chat_prompt_config = chatPromptConfig
+      postModelConfig.completion_prompt_config = completionPromptConfig
+    }
+
+    const data: Record<string, any> = {
       inputs,
-      query: completionQuery,
       model_config: postModelConfig,
     }
 
+    if (visionConfig.enabled && completionFiles && completionFiles?.length > 0) {
+      data.files = completionFiles.map((item) => {
+        if (item.transfer_method === TransferMethod.local_file) {
+          return {
+            ...item,
+            url: '',
+          }
+        }
+        return item
+      })
+    }
+
     setCompletionRes('')
-    const res: string[] = []
+    setMessageId('')
+    let res: string[] = []
 
     setResponsingTrue()
     sendCompletionMessage(appId, data, {
-      onData: (data: string) => {
+      onData: (data: string, _isFirstMessage: boolean, { messageId }) => {
         res.push(data)
+        setCompletionRes(res.join(''))
+        setMessageId(messageId)
+      },
+      onMessageReplace: (messageReplace) => {
+        res = [messageReplace.answer]
         setCompletionRes(res.join(''))
       },
       onCompleted() {
@@ -363,16 +493,20 @@ const Debug: FC<IDebug> = ({
         </div>
         <PromptValuePanel
           appType={mode as AppType}
-          value={completionQuery}
-          onChange={setCompletionQuery}
           onSend={sendTextCompletion}
+          inputs={inputs}
+          visionConfig={{
+            ...visionConfig,
+            image_file_size_limit: fileUploadConfigResponse?.image_file_size_limit,
+          }}
+          onVisionFilesChange={setCompletionFiles}
         />
       </div>
       <div className="flex flex-col grow">
         {/* Chat */}
         {mode === AppType.chat && (
           <div className="mt-[34px] h-full flex flex-col">
-            <div className={cn(doShowSuggestion ? 'pb-[140px]' : (isResponsing ? 'pb-[113px]' : 'pb-[66px]'), 'relative mt-1.5 grow h-[200px] overflow-hidden')}>
+            <div className={cn(doShowSuggestion ? 'pb-[140px]' : (isResponsing ? 'pb-[113px]' : 'pb-[76px]'), 'relative mt-1.5 grow h-[200px] overflow-hidden')}>
               <div className="h-full overflow-y-auto overflow-x-hidden" ref={chatListDomRef}>
                 <Chat
                   chatList={chatList}
@@ -389,7 +523,14 @@ const Debug: FC<IDebug> = ({
                   }}
                   isShowSuggestion={doShowSuggestion}
                   suggestionList={suggestQuestions}
-                  isShowSpeechToText={speechToTextConfig.enabled}
+                  isShowSpeechToText={speechToTextConfig.enabled && !!speech2textDefaultModel}
+                  isShowCitation={citationConfig.enabled}
+                  isShowCitationHitInfo
+                  isShowPromptLog
+                  visionConfig={{
+                    ...visionConfig,
+                    image_file_size_limit: fileUploadConfigResponse?.image_file_size_limit,
+                  }}
                 />
               </div>
             </div>
@@ -404,7 +545,11 @@ const Debug: FC<IDebug> = ({
                 className="mt-2"
                 content={completionRes}
                 isLoading={!completionRes && isResponsing}
+                isResponsing={isResponsing}
                 isInstalledApp={false}
+                messageId={messageId}
+                isError={false}
+                onRetry={() => { }}
               />
             )}
           </div>
@@ -413,6 +558,11 @@ const Debug: FC<IDebug> = ({
           <FormattingChanged
             onConfirm={handleConfirm}
             onCancel={handleCancel}
+          />
+        )}
+        {isShowCannotQueryDataset && (
+          <CannotQueryDataset
+            onConfirm={() => setShowCannotQueryDataset(false)}
           />
         )}
       </div>

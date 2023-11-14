@@ -1,15 +1,33 @@
 const translation = {
-  pageTitle: 'Prompt Engineering',
+  pageTitle: {
+    line1: 'PROMPT',
+    line2: 'Engineering',
+  },
+  promptMode: {
+    simple: 'Switch to Expert Mode to edit the whole PROMPT',
+    advanced: 'Expert Mode',
+    switchBack: 'Switch back',
+    advancedWarning: {
+      title: 'You have switched to Expert Mode, and once you modify the PROMPT, you CANNOT return to the basic mode.',
+      description: 'In Expert Mode, you can edit whole PROMPT.',
+      learnMore: 'Learn more',
+      ok: 'OK',
+    },
+    operation: {
+      addMessage: 'Add Message',
+    },
+    contextMissing: 'Context component missed, the effectiveness of the prompt may not be good.',
+  },
   operation: {
     applyConfig: 'Publish',
     resetConfig: 'Reset',
     addFeature: 'Add Feature',
     automatic: 'Automatic',
     stopResponding: 'Stop responding',
-    agree: 'agree',
-    disagree: 'disagree',
-    cancelAgree: 'Cancel agree',
-    cancelDisagree: 'Cancel disagree',
+    agree: 'like',
+    disagree: 'dislike',
+    cancelAgree: 'Cancel like',
+    cancelDisagree: 'Cancel dislike',
     userAction: 'User ',
   },
   notSetAPIKey: {
@@ -51,6 +69,11 @@ const translation = {
       description: 'Once enabled, you can use voice input.',
       resDes: 'Voice input is enabled',
     },
+    citation: {
+      title: 'Citations and Attributions',
+      description: 'Once enabled, show source document and attributed section of the generated content.',
+      resDes: 'Citations and Attributions is enabled',
+    },
     dataSet: {
       title: 'Context',
       noData: 'You can import datasets as context',
@@ -61,6 +84,91 @@ const translation = {
       noDataSet: 'No dataset found',
       toCreate: 'Go to create',
       notSupportSelectMulti: 'Currently only support one dataset',
+      queryVariable: {
+        title: 'Query variable',
+        tip: 'This variable will be used as the query input for context retrieval, obtaining context information related to the input of this variable.',
+        choosePlaceholder: 'Choose query variable',
+        noVar: 'No variables',
+        noVarTip: 'please create a variable under the Variables section',
+        unableToQueryDataSet: 'Unable to query the dataset',
+        unableToQueryDataSetTip: 'Unable to query the dataset successfully, please choose a context query variable in the context section.',
+        ok: 'OK',
+        contextVarNotEmpty: 'context query variable can not be empty',
+        deleteContextVarTitle: 'Delete variable “{{varName}}”?',
+        deleteContextVarTip: 'This variable has been set as a context query variable, and removing it will impact the normal use of the dataset. If you still need to delete it, please reselect it in the context section.',
+      },
+    },
+    tools: {
+      title: 'Tools',
+      tips: 'Tools provide a standard API call method, taking user input or variables as request parameters for querying external data as context.',
+      toolsInUse: '{{count}} tools in use',
+      modal: {
+        title: 'Tool',
+        toolType: {
+          title: 'Tool Type',
+          placeholder: 'Please select the tool type',
+        },
+        name: {
+          title: 'Name',
+          placeholder: 'Please enter the name',
+        },
+        variableName: {
+          title: 'Variable Name',
+          placeholder: 'Please enter the variable name',
+        },
+      },
+    },
+    conversationHistory: {
+      title: 'Conversation History',
+      description: 'Set prefix names for conversation roles',
+      tip: 'The Conversation History is not enabled, please add <histories> in the prompt above.',
+      learnMore: 'Learn more',
+      editModal: {
+        title: 'Edit Conversation Role Names',
+        userPrefix: 'User prefix',
+        assistantPrefix: 'Assistant prefix',
+      },
+    },
+    toolbox: {
+      title: 'TOOLBOX',
+    },
+    moderation: {
+      title: 'Content moderation',
+      description: 'Secure model output by using moderation API or maintaining a sensitive word list.',
+      allEnabled: 'INPUT/OUTPUT Content Enabled',
+      inputEnabled: 'INPUT Content Enabled',
+      outputEnabled: 'OUTPUT Content Enabled',
+      modal: {
+        title: 'Content moderation settings',
+        provider: {
+          title: 'Provider',
+          openai: 'OpenAI Moderation',
+          openaiTip: {
+            prefix: 'OpenAI Moderation requires an OpenAI API key configured in the ',
+            suffix: '.',
+          },
+          keywords: 'Keywords',
+        },
+        keywords: {
+          tip: 'One per line, separated by line breaks. Up to 100 characters per line.',
+          placeholder: 'One per line, separated by line breaks',
+          line: 'Line',
+        },
+        content: {
+          input: 'Moderate INPUT Content',
+          output: 'Moderate OUTPUT Content',
+          preset: 'Preset replies',
+          placeholder: 'Preset replies content here',
+          condition: 'Moderate INPUT and OUTPUT Content enabled at least one',
+          fromApi: 'Preset replies are returned by API',
+          errorMessage: 'Preset replies cannot be empty',
+          supportMarkdown: 'Markdown supported',
+        },
+        openaiNotConfig: {
+          before: 'OpenAI Moderation requires an OpenAI API key configured in the',
+          after: '',
+        },
+      },
     },
   },
   automatic: {
@@ -87,12 +195,14 @@ const translation = {
   },
   errorMessage: {
     nameOfKeyRequired: 'name of the key: {{key}} required',
-    valueOfVarRequired: 'Variables value can not be empty',
+    valueOfVarRequired: '{{key}} value can not be empty',
     queryRequired: 'Request text is required.',
     waitForResponse:
       'Please wait for the response to the previous message to complete.',
     waitForBatchResponse:
       'Please wait for the response to the batch task to complete.',
+    notSelectModel: 'Please choose a model',
+    waitForImgUpload: 'Please wait for the image to upload',
   },
   chatSubTitle: 'Pre Prompt',
   completionSubTitle: 'Prefix Prompt',
@@ -117,21 +227,47 @@ const translation = {
   },
   varKeyError: {
     canNoBeEmpty: 'Variable key can not be empty',
-    tooLong: 'Variable key: {{key}} too length. Can not be longer then 16 characters',
+    tooLong: 'Variable key: {{key}} too length. Can not be longer then 30 characters',
     notValid: 'Variable key: {{key}} is invalid. Can only contain letters, numbers, and underscores',
     notStartWithNumber: 'Variable key: {{key}} can not start with a number',
+    keyAlreadyExists: 'Variable key: :{{key}} already exists',
+  },
+  otherError: {
+    promptNoBeEmpty: 'Prompt can not be empty',
+    historyNoBeEmpty: 'Conversation history must be set in the prompt',
+    queryNoBeEmpty: 'Query must be set in the prompt',
   },
   variableConig: {
     modalTitle: 'Field settings',
     description: 'Setting for variable {{varName}}',
     fieldType: 'Field type',
-    string: 'Text',
+    string: 'Short Text',
+    paragraph: 'Paragraph',
     select: 'Select',
     notSet: 'Not set, try typing {{input}} in the prefix prompt',
     stringTitle: 'Form text box options',
     maxLength: 'Max length',
     options: 'Options',
     addOption: 'Add option',
+  },
+  vision: {
+    name: 'Vision',
+    description: 'Enable Vision will allows the model to take in images and answer questions about them. ',
+    settings: 'Settings',
+    visionSettings: {
+      title: 'Vision Settings',
+      resolution: 'Resolution',
+      resolutionTooltip: `low res will allow model receive a low-res 512 x 512 version of the image, and represent the image with a budget of 65 tokens. This allows the API to return faster responses and consume fewer input tokens for use cases that do not require high detail.
+      \n
+      high res will first allows the model to see the low res image and then creates detailed crops of input images as 512px squares based on the input image size. Each of the detailed crops uses twice the token budget for a total of 129 tokens.`,
+      high: 'High',
+      low: 'Low',
+      uploadMethod: 'Upload Method',
+      both: 'Both',
+      localUpload: 'Local Upload',
+      url: 'URL',
+      uploadLimit: 'Upload Limit',
+    },
   },
   openingStatement: {
     title: 'Opening remarks',
@@ -148,9 +284,13 @@ const translation = {
     model: 'Model',
     setTone: 'Set tone of responses',
     title: 'Model and Parameters',
+    modeType: {
+      chat: 'Chat',
+      completion: 'Complete',
+    },
   },
   inputs: {
-    title: 'Debugging and Previewing',
+    title: 'Debug and Preview',
     noPrompt: 'Try write some prompt in pre-prompt input',
     userInputField: 'User Input Field',
     noVar: 'Fill in the value of the variable, which will be automatically replaced in the prompt word every time a new session is started.',
@@ -164,6 +304,13 @@ const translation = {
     run: 'RUN',
   },
   result: 'Output Text',
+  datasetConfig: {
+    params: 'Params',
+    top_k: 'Top K',
+    top_kTip: 'Used to filter segments that are most similar to user questions. The system will also dynamically adjust the value of Top K, according to max_tokens of the selected model.',
+    score_threshold: 'Score Threshold',
+    score_thresholdTip: 'Used to set the similarity threshold for segment filtering.',
+  },
 }
 
 export default translation

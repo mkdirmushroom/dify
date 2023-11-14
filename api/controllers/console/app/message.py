@@ -3,7 +3,7 @@ import logging
 from typing import Union, Generator
 
 from flask import Response, stream_with_context
-from flask_login import current_user, login_required
+from flask_login import current_user
 from flask_restful import Resource, reqparse, marshal_with, fields
 from flask_restful.inputs import int_range
 from werkzeug.exceptions import InternalServerError, NotFound
@@ -14,9 +14,11 @@ from controllers.console.app.error import CompletionRequestError, ProviderNotIni
     AppMoreLikeThisDisabledError, ProviderQuotaExceededError, ProviderModelCurrentlyNotSupportError
 from controllers.console.setup import setup_required
 from controllers.console.wraps import account_initialization_required
-from core.llm.error import LLMRateLimitError, LLMBadRequestError, LLMAuthorizationError, LLMAPIConnectionError, \
+from core.model_providers.error import LLMRateLimitError, LLMBadRequestError, LLMAuthorizationError, LLMAPIConnectionError, \
     ProviderTokenNotInitError, LLMAPIUnavailableError, QuotaExceededError, ModelCurrentlyNotSupportError
-from libs.helper import uuid_value, TimestampField
+from libs.login import login_required
+from fields.conversation_fields import message_detail_fields
+from libs.helper import uuid_value
 from libs.infinite_scroll_pagination import InfiniteScrollPagination
 from extensions.ext_database import db
 from models.model import MessageAnnotation, Conversation, Message, MessageFeedback
@@ -25,44 +27,6 @@ from services.errors.app import MoreLikeThisDisabledError
 from services.errors.conversation import ConversationNotExistsError
 from services.errors.message import MessageNotExistsError
 from services.message_service import MessageService
-
-account_fields = {
-    'id': fields.String,
-    'name': fields.String,
-    'email': fields.String
-}
-
-feedback_fields = {
-    'rating': fields.String,
-    'content': fields.String,
-    'from_source': fields.String,
-    'from_end_user_id': fields.String,
-    'from_account': fields.Nested(account_fields, allow_null=True),
-}
-
-annotation_fields = {
-    'content': fields.String,
-    'account': fields.Nested(account_fields, allow_null=True),
-    'created_at': TimestampField
-}
-
-message_detail_fields = {
-    'id': fields.String,
-    'conversation_id': fields.String,
-    'inputs': fields.Raw,
-    'query': fields.String,
-    'message': fields.Raw,
-    'message_tokens': fields.Integer,
-    'answer': fields.String,
-    'answer_tokens': fields.Integer,
-    'provider_response_latency': fields.Float,
-    'from_source': fields.String,
-    'from_end_user_id': fields.String,
-    'from_account_id': fields.String,
-    'feedbacks': fields.List(fields.Nested(feedback_fields)),
-    'annotation': fields.Nested(annotation_fields, allow_null=True),
-    'created_at': TimestampField
-}
 
 
 class ChatMessageListApi(Resource):
@@ -269,8 +233,8 @@ class MessageMoreLikeThisApi(Resource):
             raise NotFound("Message Not Exists.")
         except MoreLikeThisDisabledError:
             raise AppMoreLikeThisDisabledError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -297,8 +261,8 @@ def compact_response(response: Union[dict | Generator]) -> Response:
                 yield "data: " + json.dumps(api.handle_error(NotFound("Message Not Exists.")).get_json()) + "\n\n"
             except MoreLikeThisDisabledError:
                 yield "data: " + json.dumps(api.handle_error(AppMoreLikeThisDisabledError()).get_json()) + "\n\n"
-            except ProviderTokenNotInitError:
-                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError()).get_json()) + "\n\n"
+            except ProviderTokenNotInitError as ex:
+                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError(ex.description)).get_json()) + "\n\n"
             except QuotaExceededError:
                 yield "data: " + json.dumps(api.handle_error(ProviderQuotaExceededError()).get_json()) + "\n\n"
             except ModelCurrentlyNotSupportError:
@@ -331,16 +295,16 @@ class MessageSuggestedQuestionApi(Resource):
         try:
             questions = MessageService.get_suggested_questions_after_answer(
                 app_model=app_model,
-                user=current_user,
                 message_id=message_id,
+                user=current_user,
                 check_enabled=False
             )
         except MessageNotExistsError:
             raise NotFound("Message not found")
         except ConversationNotExistsError:
             raise NotFound("Conversation not found")
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -365,7 +329,7 @@ class MessageApi(Resource):
         message_id = str(message_id)
 
         # get app info
-        app_model = _get_app(app_id, 'chat')
+        app_model = _get_app(app_id)
 
         message = db.session.query(Message).filter(
             Message.id == message_id,

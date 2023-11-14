@@ -5,6 +5,11 @@ import { Combobox, Listbox, Transition } from '@headlessui/react'
 import classNames from 'classnames'
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/20/solid'
 import { useTranslation } from 'react-i18next'
+import {
+  PortalToFollowElem,
+  PortalToFollowElemContent,
+  PortalToFollowElemTrigger,
+} from '@/app/components/base/portal-to-follow-elem'
 
 const defaultItems = [
   { value: 1, name: 'option1' },
@@ -31,6 +36,7 @@ export type ISelectProps = {
   allowSearch?: boolean
   bgClassName?: string
   placeholder?: string
+  overlayClassName?: string
 }
 const Select: FC<ISelectProps> = ({
   className,
@@ -40,6 +46,7 @@ const Select: FC<ISelectProps> = ({
   onSelect,
   allowSearch = true,
   bgClassName = 'bg-gray-100',
+  overlayClassName,
 }) => {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -48,9 +55,9 @@ const Select: FC<ISelectProps> = ({
   useEffect(() => {
     let defaultSelect = null
     const existed = items.find((item: Item) => item.value === defaultValue)
-    if (existed) {
+    if (existed)
       defaultSelect = existed
-    }
+
     setSelectedItem(defaultSelect)
   }, [defaultValue])
 
@@ -104,7 +111,7 @@ const Select: FC<ISelectProps> = ({
         </div>
 
         {filteredItems.length > 0 && (
-          <Combobox.Options className="absolute z-10 mt-1 px-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg border-gray-200 border-[0.5px] focus:outline-none sm:text-sm">
+          <Combobox.Options className={`absolute z-10 mt-1 px-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg border-gray-200 border-[0.5px] focus:outline-none sm:text-sm ${overlayClassName}`}>
             {filteredItems.map((item: Item) => (
               <Combobox.Option
                 key={item.value}
@@ -155,9 +162,9 @@ const SimpleSelect: FC<ISelectProps> = ({
   useEffect(() => {
     let defaultSelect = null
     const existed = items.find((item: Item) => item.value === defaultValue)
-    if (existed) {
+    if (existed)
       defaultSelect = existed
-    }
+
     setSelectedItem(defaultSelect)
   }, [defaultValue])
 
@@ -172,8 +179,8 @@ const SimpleSelect: FC<ISelectProps> = ({
       }}
     >
       <div className={`relative h-9 ${wrapperClassName}`}>
-        <Listbox.Button className={`w-full h-full rounded-lg border-0 bg-gray-100 py-1.5 pl-3 pr-10 shadow-sm sm:text-sm sm:leading-6 focus-visible:outline-none focus-visible:bg-gray-200 group-hover:bg-gray-200 cursor-pointer ${className}`}>
-          <span className={classNames("block truncate text-left", !selectedItem?.name && 'text-gray-400')}>{selectedItem?.name ?? localPlaceholder}</span>
+        <Listbox.Button className={`w-full h-full rounded-lg border-0 bg-gray-100 py-1.5 pl-3 pr-10 sm:text-sm sm:leading-6 focus-visible:outline-none focus-visible:bg-gray-200 group-hover:bg-gray-200 cursor-pointer ${className}`}>
+          <span className={classNames('block truncate text-left', !selectedItem?.name && 'text-gray-400')}>{selectedItem?.name ?? localPlaceholder}</span>
           <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
             <ChevronDownIcon
               className="h-5 w-5 text-gray-400"
@@ -220,5 +227,83 @@ const SimpleSelect: FC<ISelectProps> = ({
     </Listbox>
   )
 }
-export { SimpleSelect }
+
+type PortalSelectProps = {
+  value: string | number
+  onSelect: (value: Item) => void
+  items: Item[]
+  placeholder?: string
+  popupClassName?: string
+}
+const PortalSelect: FC<PortalSelectProps> = ({
+  value,
+  onSelect,
+  items,
+  placeholder,
+  popupClassName,
+}) => {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const localPlaceholder = placeholder || t('common.placeholder.select')
+  const selectedItem = items.find(item => item.value === value)
+
+  return (
+    <PortalToFollowElem
+      open={open}
+      onOpenChange={setOpen}
+      placement='bottom-start'
+      offset={4}
+    >
+      <PortalToFollowElemTrigger onClick={() => setOpen(v => !v)} className='w-full'>
+        <div
+          className={`
+            flex items-center justify-between px-2.5 h-9 rounded-lg border-0 bg-gray-100 text-sm cursor-pointer 
+          `}
+          title={selectedItem?.name}
+        >
+          <span
+            className={`
+              grow truncate
+              ${!selectedItem?.name && 'text-gray-400'}
+            `}
+          >
+            {selectedItem?.name ?? localPlaceholder}
+          </span>
+          <ChevronDownIcon className='shrink-0 h-4 w-4 text-gray-400' />
+        </div>
+      </PortalToFollowElemTrigger>
+      <PortalToFollowElemContent className={`z-20 ${popupClassName}`}>
+        <div
+          className='px-1 py-1 max-h-60 overflow-auto rounded-md bg-white text-base shadow-lg border-gray-200 border-[0.5px] focus:outline-none sm:text-sm'
+        >
+          {items.map((item: Item) => (
+            <div
+              key={item.value}
+              className={`
+                flex items-center justify-between px-2.5 h-9 cursor-pointer rounded-lg hover:bg-gray-100 text-gray-700
+                ${item.value === value && 'bg-gray-100'}
+              `}
+              title={item.name}
+              onClick={() => {
+                onSelect(item)
+                setOpen(false)
+              }}
+            >
+              <span
+                className='grow truncate'
+                title={item.name}
+              >
+                {item.name}
+              </span>
+              {item.value === value && (
+                <CheckIcon className='shrink-0 h-4 w-4' />
+              )}
+            </div>
+          ))}
+        </div>
+      </PortalToFollowElemContent>
+    </PortalToFollowElem>
+  )
+}
+export { SimpleSelect, PortalSelect }
 export default React.memo(Select)

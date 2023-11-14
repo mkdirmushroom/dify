@@ -14,7 +14,7 @@ from controllers.service_api.app.error import AppUnavailableError, ProviderNotIn
     ProviderModelCurrentlyNotSupportError
 from controllers.service_api.wraps import AppApiResource
 from core.conversation_message_task import PubHandler
-from core.llm.error import LLMBadRequestError, LLMAuthorizationError, LLMAPIUnavailableError, LLMAPIConnectionError, \
+from core.model_providers.error import LLMBadRequestError, LLMAuthorizationError, LLMAPIUnavailableError, LLMAPIConnectionError, \
     LLMRateLimitError, ProviderTokenNotInitError, QuotaExceededError, ModelCurrentlyNotSupportError
 from libs.helper import uuid_value
 from services.completion_service import CompletionService
@@ -27,9 +27,12 @@ class CompletionApi(AppApiResource):
 
         parser = reqparse.RequestParser()
         parser.add_argument('inputs', type=dict, required=True, location='json')
-        parser.add_argument('query', type=str, location='json')
+        parser.add_argument('query', type=str, location='json', default='')
+        parser.add_argument('files', type=list, required=False, location='json')
         parser.add_argument('response_mode', type=str, choices=['blocking', 'streaming'], location='json')
         parser.add_argument('user', type=str, location='json')
+        parser.add_argument('retriever_from', type=str, required=False, default='dev', location='json')
+
         args = parser.parse_args()
 
         streaming = args['response_mode'] == 'streaming'
@@ -37,13 +40,15 @@ class CompletionApi(AppApiResource):
         if end_user is None and args['user'] is not None:
             end_user = create_or_update_end_user_for_user_id(app_model, args['user'])
 
+        args['auto_generate_name'] = False
+
         try:
             response = CompletionService.completion(
                 app_model=app_model,
                 user=end_user,
                 args=args,
                 from_source='api',
-                streaming=streaming
+                streaming=streaming,
             )
 
             return compact_response(response)
@@ -54,8 +59,8 @@ class CompletionApi(AppApiResource):
         except services.errors.app_model_config.AppModelConfigBrokenError:
             logging.exception("App model config broken.")
             raise AppUnavailableError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -88,9 +93,13 @@ class ChatApi(AppApiResource):
         parser = reqparse.RequestParser()
         parser.add_argument('inputs', type=dict, required=True, location='json')
         parser.add_argument('query', type=str, required=True, location='json')
+        parser.add_argument('files', type=list, required=False, location='json')
         parser.add_argument('response_mode', type=str, choices=['blocking', 'streaming'], location='json')
         parser.add_argument('conversation_id', type=uuid_value, location='json')
         parser.add_argument('user', type=str, location='json')
+        parser.add_argument('retriever_from', type=str, required=False, default='dev', location='json')
+        parser.add_argument('auto_generate_name', type=bool, required=False, default='True', location='json')
+
         args = parser.parse_args()
 
         streaming = args['response_mode'] == 'streaming'
@@ -115,8 +124,8 @@ class ChatApi(AppApiResource):
         except services.errors.app_model_config.AppModelConfigBrokenError:
             logging.exception("App model config broken.")
             raise AppUnavailableError()
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -156,8 +165,8 @@ def compact_response(response: Union[dict | Generator]) -> Response:
             except services.errors.app_model_config.AppModelConfigBrokenError:
                 logging.exception("App model config broken.")
                 yield "data: " + json.dumps(api.handle_error(AppUnavailableError()).get_json()) + "\n\n"
-            except ProviderTokenNotInitError:
-                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError()).get_json()) + "\n\n"
+            except ProviderTokenNotInitError as ex:
+                yield "data: " + json.dumps(api.handle_error(ProviderNotInitializeError(ex.description)).get_json()) + "\n\n"
             except QuotaExceededError:
                 yield "data: " + json.dumps(api.handle_error(ProviderQuotaExceededError()).get_json()) + "\n\n"
             except ModelCurrentlyNotSupportError:
@@ -179,4 +188,3 @@ api.add_resource(CompletionApi, '/completion-messages')
 api.add_resource(CompletionStopApi, '/completion-messages/<string:task_id>/stop')
 api.add_resource(ChatApi, '/chat-messages')
 api.add_resource(ChatStopApi, '/chat-messages/<string:task_id>/stop')
-

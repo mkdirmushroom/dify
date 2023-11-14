@@ -1,5 +1,23 @@
 const translation = {
-  pageTitle: '提示词编排',
+  pageTitle: {
+    line1: '提示词',
+    line2: '编排',
+  },
+  promptMode: {
+    simple: '切换到专家模式以编辑完整的提示词',
+    advanced: '专家模式',
+    switchBack: '返回简易模式',
+    advancedWarning: {
+      title: '您已切换到专家模式，一旦修改提示词，将无法返回简易模式。',
+      description: '在专家模式下，您可以编辑完整的提示词。',
+      learnMore: '了解更多',
+      ok: '确定',
+    },
+    operation: {
+      addMessage: '添加消息',
+    },
+    contextMissing: '上下文内容块缺失，提示词的有效性可能不好。',
+  },
   operation: {
     applyConfig: '发布',
     resetConfig: '重置',
@@ -51,6 +69,11 @@ const translation = {
       description: '启用后，您可以使用语音输入。',
       resDes: '语音输入已启用',
     },
+    citation: {
+      title: '引用和归属',
+      description: '启用后，显示源文档和生成内容的归属部分。',
+      resDes: '引用和归属已启用',
+    },
     dataSet: {
       title: '上下文',
       noData: '您可以导入数据集作为上下文',
@@ -61,6 +84,91 @@ const translation = {
       noDataSet: '未找到数据集',
       toCreate: '去创建',
       notSupportSelectMulti: '目前只支持引用一个数据集',
+      queryVariable: {
+        title: '查询变量',
+        tip: '该变量将用作上下文检索的查询输入，获取与该变量的输入相关的上下文信息。',
+        choosePlaceholder: '请选择变量',
+        noVar: '没有变量',
+        noVarTip: '请创建变量',
+        unableToQueryDataSet: '无法查询数据集',
+        unableToQueryDataSetTip: '无法成功查询数据集，请在上下文部分选择一个上下文查询变量。',
+        ok: '好的',
+        contextVarNotEmpty: '上下文查询变量不能为空',
+        deleteContextVarTitle: '删除变量“{{varName}}”？',
+        deleteContextVarTip: '该变量已被设置为上下文查询变量，删除该变量将影响数据集的正常使用。 如果您仍需要删除它，请在上下文部分中重新选择它。',
+      },
+    },
+    tools: {
+      title: '工具',
+      tips: '工具提供了一个标准的 API 调用方式，将用户输入或变量作为 API 的请求参数，用于查询外部数据作为上下文。',
+      toolsInUse: '{{count}} 工具使用中',
+      modal: {
+        title: '工具',
+        toolType: {
+          title: '工具类型',
+          placeholder: '请选择工具类型',
+        },
+        name: {
+          title: '名称',
+          placeholder: '请填写名称',
+        },
+        variableName: {
+          title: '变量名称',
+          placeholder: '请填写变量名称',
+        },
+      },
+    },
+    conversationHistory: {
+      title: '对话历史',
+      description: '设置对话角色的前缀名称',
+      tip: '对话历史未启用，请在上面的提示中添加<histories>。',
+      learnMore: '了解更多',
+      editModal: {
+        title: '编辑对话角色名称',
+        userPrefix: '用户前缀',
+        assistantPrefix: '助手前缀',
+      },
+    },
+    toolbox: {
+      title: '工具箱',
+    },
+    moderation: {
+      title: '内容审查',
+      description: '您可以调用审查 API 或者维护敏感词库来使模型更安全地输出。',
+      allEnabled: '审查输入/审查输出 内容已启用',
+      inputEnabled: '审查输入内容已启用',
+      outputEnabled: '审查输出内容已启用',
+      modal: {
+        title: '内容审查设置',
+        provider: {
+          title: '类别',
+          openai: 'OpenAI Moderation',
+          openaiTip: {
+            prefix: 'OpenAI Moderation 需要在',
+            suffix: '中配置 OpenAI API 密钥。',
+          },
+          keywords: '关键词',
+        },
+        keywords: {
+          tip: '每行一个，用换行符分隔。每行最多 100 个字符。',
+          placeholder: '每行一个，用换行符分隔',
+          line: '行',
+        },
+        content: {
+          input: '审查输入内容',
+          output: '审查输出内容',
+          preset: '预设回复',
+          placeholder: '这里预设回复内容',
+          condition: '审查输入内容和审查输出内容至少启用一项',
+          fromApi: '预设回复通过 API 返回',
+          errorMessage: '预设回复不能为空',
+          supportMarkdown: '支持 Markdown',
+        },
+        openaiNotConfig: {
+          before: 'OpenAI 内容审查需要在',
+          after: '中配置 OpenAI API 密钥。',
+        },
+      },
     },
   },
   automatic: {
@@ -86,10 +194,12 @@ const translation = {
   },
   errorMessage: {
     nameOfKeyRequired: '变量 {{key}} 对应的名称必填',
-    valueOfVarRequired: '变量值必填',
+    valueOfVarRequired: '{{key}}必填',
     queryRequired: '主要文本必填',
     waitForResponse: '请等待上条信息响应完成',
     waitForBatchResponse: '请等待批量任务完成',
+    notSelectModel: '请选择模型',
+    waitForImgUpload: '请等待图片上传完成',
   },
   chatSubTitle: '对话前提示词',
   completionSubTitle: '前缀提示词',
@@ -113,21 +223,47 @@ const translation = {
   },
   varKeyError: {
     canNoBeEmpty: '变量不能为空',
-    tooLong: '变量: {{key}} 长度太长。不能超过 16 个字符',
+    tooLong: '变量: {{key}} 长度太长。不能超过 30 个字符',
     notValid: '变量: {{key}} 非法。只能包含英文字符，数字和下划线',
     notStartWithNumber: '变量: {{key}} 不能以数字开头',
+    keyAlreadyExists: '变量:{{key}} 已存在',
+  },
+  otherError: {
+    promptNoBeEmpty: '提示词不能为空',
+    historyNoBeEmpty: '提示词中必须设置对话历史',
+    queryNoBeEmpty: '提示词中必须设置查询内容',
   },
   variableConig: {
     modalTitle: '变量设置',
     description: '设置变量 {{varName}}',
     fieldType: '字段类型',
     string: '文本',
+    paragraph: '段落',
     select: '下拉选项',
     notSet: '未设置，在 Prompt 中输入 {{input}} 试试',
     stringTitle: '文本框设置',
     maxLength: '最大长度',
     options: '选项',
     addOption: '添加选项',
+  },
+  vision: {
+    name: '视觉',
+    description: '开启视觉功能将允许模型输入图片，并根据图像内容的理解回答用户问题',
+    settings: '设置',
+    visionSettings: {
+      title: '视觉设置',
+      resolution: '分辨率',
+      resolutionTooltip: `低分辨率模式将使模型接收图像的低分辨率版本，尺寸为512 x 512，并使用65 Tokens 来表示图像。这样可以使API更快地返回响应，并在不需要高细节的用例中消耗更少的输入。
+      \n
+      高分辨率模式将首先允许模型查看低分辨率图像，然后根据输入图像的大小创建512像素的详细裁剪图像。每个详细裁剪图像使用两倍的预算总共为129 Tokens。`,
+      high: '高',
+      low: '低',
+      uploadMethod: '上传方式',
+      both: '两者',
+      localUpload: '本地上传',
+      url: 'URL',
+      uploadLimit: '上传数量限制',
+    },
   },
   openingStatement: {
     title: '对话开场白',
@@ -144,6 +280,10 @@ const translation = {
     model: '语言模型',
     setTone: '模型设置',
     title: '模型及参数',
+    modeType: {
+      chat: '对话型',
+      completion: '补全型',
+    },
   },
   inputs: {
     title: '调试与预览',
@@ -158,6 +298,13 @@ const translation = {
     run: '运行',
   },
   result: '结果',
+  datasetConfig: {
+    params: '参数设置',
+    top_k: 'Top K',
+    top_kTip: '用于筛选与用户问题相似度最高的文本片段。系统同时会根据选用模型上下文窗口大小动态调整分段数量。',
+    score_threshold: 'Score 阈值',
+    score_thresholdTip: '用于设置文本片段筛选的相似度阈值。',
+  },
 }
 
 export default translation

@@ -7,20 +7,22 @@ import { useContext } from 'use-context-selector'
 import Toast from '../../base/toast'
 import s from './style.module.css'
 import ExploreContext from '@/context/explore-context'
-import type { App } from '@/models/explore'
+import type { App, AppCategory } from '@/models/explore'
 import Category from '@/app/components/explore/category'
 import AppCard from '@/app/components/explore/app-card'
 import { fetchAppDetail, fetchAppList, installApp } from '@/service/explore'
 import { createApp } from '@/service/apps'
 import CreateAppModal from '@/app/components/explore/create-app-modal'
+import type { CreateAppModalProps } from '@/app/components/explore/create-app-modal'
 import Loading from '@/app/components/base/loading'
 import { NEED_REFRESH_APP_LIST_KEY } from '@/config'
+import { type AppMode } from '@/types/app'
 
 const Apps: FC = () => {
   const { t } = useTranslation()
   const router = useRouter()
   const { setControlUpdateInstalledApps, hasEditPermission } = useContext(ExploreContext)
-  const [currCategory, setCurrCategory] = React.useState('')
+  const [currCategory, setCurrCategory] = React.useState<AppCategory | ''>('')
   const [allList, setAllList] = React.useState<App[]>([])
   const [isLoaded, setIsLoaded] = React.useState(false)
 
@@ -29,7 +31,8 @@ const Apps: FC = () => {
       return allList
     return allList.filter(item => item.category === currCategory)
   })()
-  const [categories, setCategories] = React.useState([])
+
+  const [categories, setCategories] = React.useState<AppCategory[]>([])
   useEffect(() => {
     (async () => {
       const { categories, recommended_apps }: any = await fetchAppList()
@@ -50,7 +53,7 @@ const Apps: FC = () => {
 
   const [currApp, setCurrApp] = React.useState<App | null>(null)
   const [isShowCreateModal, setIsShowCreateModal] = React.useState(false)
-  const onCreate = async ({ name, icon, icon_background }: any) => {
+  const onCreate: CreateAppModalProps['onConfirm'] = async ({ name, icon, icon_background }) => {
     const { app_model_config: model_config } = await fetchAppDetail(currApp?.app.id as string)
 
     try {
@@ -58,7 +61,7 @@ const Apps: FC = () => {
         name,
         icon,
         icon_background,
-        mode: currApp?.app.mode as any,
+        mode: currApp?.app.mode as AppMode,
         config: model_config,
       })
       setIsShowCreateModal(false)
@@ -95,13 +98,13 @@ const Apps: FC = () => {
         onChange={setCurrCategory}
       />
       <div
-        className='flex mt-6 flex-col overflow-auto bg-gray-100 shrink-0 grow'
+        className='flex mt-6 pb-6 flex-col overflow-auto bg-gray-100 shrink-0 grow'
         style={{
           maxHeight: 'calc(100vh - 243px)',
         }}
       >
         <nav
-          className={`${s.appList} grid content-start grid-cols-1 gap-4 px-12 pb-10grow shrink-0`}>
+          className={`${s.appList} grid content-start gap-4 px-12 shrink-0`}>
           {currList.map(app => (
             <AppCard
               key={app.app_id}

@@ -16,6 +16,10 @@ const translation = {
   intro4: 'or it ',
   intro5: 'can be created',
   intro6: ' as a standalone ChatGPT index plug-in to publish',
+  unavailable: 'Unavailable',
+  unavailableTip: 'Embedding model is not available, the default embedding model needs to be configured',
+  datasets: 'DATASETS',
+  datasetsApi: 'API',
 }
 
 export default translation

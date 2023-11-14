@@ -6,6 +6,7 @@ type IProps = {
   value: string
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
   className?: string
+  wrapperClassName?: string
   minHeight?: number
   maxHeight?: number
   autoFocus?: boolean
@@ -16,9 +17,10 @@ type IProps = {
 
 const AutoHeightTextarea = forwardRef(
   (
-    { value, onChange, placeholder, className, minHeight = 36, maxHeight = 96, autoFocus, controlFocus, onKeyDown, onKeyUp }: IProps,
+    { value, onChange, placeholder, className, wrapperClassName, minHeight = 36, maxHeight = 96, autoFocus, controlFocus, onKeyDown, onKeyUp }: IProps,
     outerRef: any,
   ) => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const ref = outerRef || useRef<HTMLTextAreaElement>(null)
 
     const doFocus = () => {
@@ -53,14 +55,21 @@ const AutoHeightTextarea = forwardRef(
     }, [controlFocus])
 
     return (
-      <div className='relative'>
-        <div className={cn(className, 'invisible whitespace-pre-wrap break-all  overflow-y-auto')} style={{ minHeight, maxHeight }}>
+      <div className={`relative ${wrapperClassName}`}>
+        <div className={cn(className, 'invisible whitespace-pre-wrap break-all  overflow-y-auto')} style={{
+          minHeight,
+          maxHeight,
+          paddingRight: (value && value.trim().length > 10000) ? 140 : 130,
+        }}>
           {!value ? placeholder : value.replace(/\n$/, '\n ')}
         </div>
         <textarea
           ref={ref}
           autoFocus={autoFocus}
-          className={cn(className, 'absolute inset-0 resize-none overflow-hidden')}
+          className={cn(className, 'absolute inset-0 resize-none overflow-auto')}
+          style={{
+            paddingRight: (value && value.trim().length > 10000) ? 140 : 130,
+          }}
           placeholder={placeholder}
           onChange={onChange}
           onKeyDown={onKeyDown}
@@ -71,5 +80,7 @@ const AutoHeightTextarea = forwardRef(
     )
   },
 )
+
+AutoHeightTextarea.displayName = 'AutoHeightTextarea'
 
 export default AutoHeightTextarea

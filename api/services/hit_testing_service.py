@@ -4,14 +4,13 @@ from typing import List
 
 import numpy as np
 from flask import current_app
-from langchain.embeddings import OpenAIEmbeddings
 from langchain.embeddings.base import Embeddings
 from langchain.schema import Document
 from sklearn.manifold import TSNE
 
 from core.embedding.cached_embedding import CacheEmbedding
 from core.index.vector_index.vector_index import VectorIndex
-from core.llm.llm_builder import LLMBuilder
+from core.model_providers.model_factory import ModelFactory
 from extensions.ext_database import db
 from models.account import Account
 from models.dataset import Dataset, DocumentSegment, DatasetQuery
@@ -20,7 +19,7 @@ from models.dataset import Dataset, DocumentSegment, DatasetQuery
 class HitTestingService:
     @classmethod
     def retrieve(cls, dataset: Dataset, query: str, account: Account, limit: int = 10) -> dict:
-        if dataset.available_document_count == 0 or dataset.available_document_count == 0:
+        if dataset.available_document_count == 0 or dataset.available_segment_count == 0:
             return {
                 "query": {
                     "content": query,
@@ -29,15 +28,13 @@ class HitTestingService:
                 "records": []
             }
 
-        model_credentials = LLMBuilder.get_model_credentials(
+        embedding_model = ModelFactory.get_embedding_model(
             tenant_id=dataset.tenant_id,
-            model_provider=LLMBuilder.get_default_provider(dataset.tenant_id),
-            model_name='text-embedding-ada-002'
+            model_provider_name=dataset.embedding_model_provider,
+            model_name=dataset.embedding_model
         )
 
-        embeddings = CacheEmbedding(OpenAIEmbeddings(
-            **model_credentials
-        ))
+        embeddings = CacheEmbedding(embedding_model)
 
         vector_index = VectorIndex(
             dataset=dataset,
@@ -50,7 +47,10 @@ class HitTestingService:
             query,
             search_type='similarity_score_threshold',
             search_kwargs={
-                'k': 10
+                'k': 10,
+                'filter': {
+                    'group_id': [dataset.id]
+                }
             }
         )
         end = time.perf_counter()

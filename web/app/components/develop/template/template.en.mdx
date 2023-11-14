@@ -5,6 +5,25 @@ import { Row, Col, Properties, Property, Heading, SubProperty, Paragraph } from 
 
 For high-quality text generation, such as articles, summaries, and translations, use the completion-messages API with user input. Text generation relies on the model parameters and prompt templates set in Dify Prompt Engineering.
 
+<div>
+  ### Authentication
+
+  Service API of Dify authenticates using an `API-Key`.
+
+  It is suggested that developers store the `API-Key` in the backend instead of sharing or storing it in the client side to avoid the leakage of the `API-Key`, which may lead to property loss.
+
+  All API requests should include your `API-Key` in the **`Authorization`** HTTP Header, as shown below:
+
+  <CodeGroup title="Code">
+    ```javascript
+      Authorization: Bearer {API_KEY}
+
+    ```
+  </CodeGroup>
+</div>
+
+---
+
 <Heading
   url='/completion-messages'
   method='POST'
@@ -30,9 +49,6 @@ For high-quality text generation, such as articles, summaries, and translations,
         )}
         </ul>
       </Property>
-      <Property name='query' type='string' key='query'>
-        User input text content.
-      </Property>
       <Property name='response_mode' type='string' key='response_mode'>
         - Blocking type, waiting for execution to complete and returning results. (Requests may be interrupted if the process is long)
         - streaming returns. Implementation of streaming return based on SSE (**[Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)**).
@@ -40,19 +56,27 @@ For high-quality text generation, such as articles, summaries, and translations,
       <Property name='user' type='string' key='user'>
         The user identifier, defined by the developer, must ensure uniqueness within the app.
       </Property>
+      <Property name='files' type='array[object]' key='files'>
+          Uploaded files.
+          - `type` file type: currently only `image` is supported.
+          - `transfer_method` transfer method:
+            - `remote_url`: Image address.
+            - `local_file`: upload file.
+          - `upload_file_id` Upload file ID. Required when `transfer_method` is `local_file`.
+          - `url` image address. Required when `transfer_method` is `remote_url`.
+      </Property>
     </Properties>
   </Col>
   <Col sticky>
 
-    <CodeGroup title="Request" tag="POST" label="/completion-messages" targetCode={`curl --location --request POST '${props.appDetail.api_base_url}/completion-messages' \\\n--header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY' \\\n--header 'Content-Type: application/json' \\\n--data-raw '{\n    "inputs": ${JSON.stringify(props.inputs)},\n    "query": "Hi",\n    "response_mode": "streaming"\n    "user": "abc-123"\n}'\n`}>
+    <CodeGroup title="Request" tag="POST" label="/completion-messages" targetCode={`curl --location --request POST '${props.appDetail.api_base_url}/completion-messages' \\\n--header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY' \\\n--header 'Content-Type: application/json' \\\n--data-raw '{\n    "inputs": ${JSON.stringify(props.inputs)},\n    "response_mode": "streaming"\n    "user": "abc-123"\n}'\n`}>
 
     ```bash {{ title: 'cURL' }}
-    curl --location --request POST 'https://cloud.langgenius.dev/api/completion-messages' \
+    curl --location --request POST '${props.appDetail.api_base_url}/completion-messages' \
     --header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY' \
     --header 'Content-Type: application/json' \
     --data-raw '{
         "inputs": {},
-        "query": "Hi",
         "response_mode": "streaming",
         "user": "abc-123"
     }'
@@ -115,7 +139,7 @@ For high-quality text generation, such as articles, summaries, and translations,
     <CodeGroup title="Request" tag="POST" label="/messages/{message_id}/feedbacks" targetCode={`curl --location --request POST '${props.appDetail.api_base_url}/messages/{message_id}/feedbacks \\\n--header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY' \\\n--header 'Content-Type: application/json' \\\n --data-raw '{ \n "rating": "like",\n    "user": "abc-123"\n}'`}>
 
     ```bash {{ title: 'cURL' }}
-    curl --location --request POST 'https://cloud.langgenius.dev/api/messages/{message_id}/feedbacks' \
+    curl --location --request POST '${props.appDetail.api_base_url}/messages/{message_id}/feedbacks' \
     --header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY' \
     --header 'Content-Type: application/json' \
     --data-raw '{
@@ -138,7 +162,6 @@ For high-quality text generation, such as articles, summaries, and translations,
           "avatar_url": "https://assets.protocol.chat/avatars/frank.jpg",
           "display_name": null,
           "conversation_id": "xgQQXg3hrtjh7AvZ",
-          "last_active_at": 705103200,
           "created_at": 692233200
         },
         {
@@ -155,6 +178,57 @@ For high-quality text generation, such as articles, summaries, and translations,
 ---
 
 <Heading
+  url='/files/upload'
+  method='POST'
+  title='Upload files'
+  name='#files-upload'
+/>
+<Row>
+  <Col>
+    Upload files to the server for text generation and dialogue. Uploaded files are only available to the current end user.
+
+    ### Request Body
+    The request method is `multipart/form-data`
+    <Properties>
+      <Property name='file' type='file' key='file'>
+        The file to upload. Currently supports png, jpg, jpeg, webp, gif format files.
+      </Property>
+      <Property name='user' type='string' key='user'>
+        User ID, rules are defined by the developer, and it is necessary to ensure that the user ID is unique within the application.
+      </Property>
+    </Properties>
+  </Col>
+  <Col sticky>
+
+    <CodeGroup title="Request" tag="POST" label="/files/upload" targetCode={`curl --location --request POST '${props.appDetail.api_base_url}/files/upload' \\\n--header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY' \\\n--form 'file=@localfile;type=image/[png|jpeg|jpg|webp|gif] \\\n--form 'user=abc-123'`}>
+
+    ```bash {{ title: 'cURL' }}
+    curl --location --request POST '${props.appDetail.api_base_url}/files/upload' \
+    --header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY' \
+    --form 'file=@"/path/to/file"'
+    ```
+
+    </CodeGroup>
+
+    <CodeGroup title="Response">
+    ```json {{ title: 'Response' }}
+    {
+      "id": "72fa9618-8f89-4a37-9b33-7e1178a24a67",  
+      "name": "example.png",
+      "size": 1024,
+      "extension": "png",
+      "mime_type": "image/png",
+      "created_by": 123,  
+      "created_at": 1577836800,
+    }
+    ```
+    </CodeGroup>
+  </Col>
+</Row>
+
+---
+
+<Heading
   url='/parameters'
   method='GET'
   title='Obtain application parameter information'
@@ -162,7 +236,9 @@ For high-quality text generation, such as articles, summaries, and translations,
 />
 <Row>
   <Col>
-    Retrieve configured Input parameters, including variable names, field names, types, and default values. Typically used for displaying these fields in a form or filling in default values after the client loads.
+    Content include:
+    1. Retrieve configured Input parameters, including variable names, field names, types, and default values. Typically used for displaying these fields in a form or filling in default values after the client loads.
+    2. Configuration of uploading images, including whether to enable image uploading, the number of uploaded images and the uploading method. Note: This configuration is only available when using a model that supports multimodality.
 
     ### Query
 
@@ -177,7 +253,7 @@ For high-quality text generation, such as articles, summaries, and translations,
     <CodeGroup title="Request" tag="GET" label="/parameters" targetCode={`curl --location --request GET '${props.appDetail.api_base_url}/parameters?user=abc-123' \\\n--header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY'`}>
 
     ```bash {{ title: 'cURL' }}
-    curl --location --request GET 'https://cloud.langgenius.dev/api/parameters?user=abc-123' \
+    curl --location --request GET '${props.appDetail.api_base_url}/parameters?user=abc-123' \
     --header 'Authorization: Bearer ENTER-YOUR-SECRET-KEY'
     ```
 
@@ -187,18 +263,30 @@ For high-quality text generation, such as articles, summaries, and translations,
     ```json {{ title: 'Response' }}
     {
       "introduction": "nice to meet you",
-      "variables": [
+      "user_input_form": [
         {
-          "key": "book",
-          "name": "Which book?",
-          "description": null,
-          "type": "string",
-          "default": null,
-          "options": null
-        },
+          "text-input": {
+            "label": "a",
+            "variable": "a",
+            "required": true,
+            "max_length": 48,
+            "default": ""
+          }
+        }
         {
           // ...
-      ]
+        }
+      ],
+      "file_upload": {
+        "image": {
+          "enabled": true,
+          "number_limits": 3,
+          "transfer_methods": [
+            "remote_url",
+            "local_file"
+          ]
+        }
+      }
     }
     ```
     </CodeGroup>

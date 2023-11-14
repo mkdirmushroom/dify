@@ -1,10 +1,10 @@
 # -*- coding:utf-8 -*-
-import random
 from datetime import datetime
 from typing import List
 
-from flask import request
-from flask_login import login_required, current_user
+from flask import request, current_app
+from flask_login import current_user
+from libs.login import login_required
 from flask_restful import Resource, fields, marshal, marshal_with, reqparse
 from sqlalchemy import desc, asc
 from werkzeug.exceptions import NotFound, Forbidden
@@ -18,9 +18,12 @@ from controllers.console.datasets.error import DocumentAlreadyFinishedError, Inv
 from controllers.console.setup import setup_required
 from controllers.console.wraps import account_initialization_required
 from core.indexing_runner import IndexingRunner
-from core.llm.error import ProviderTokenNotInitError, QuotaExceededError, ModelCurrentlyNotSupportError
+from core.model_providers.error import ProviderTokenNotInitError, QuotaExceededError, ModelCurrentlyNotSupportError, \
+    LLMBadRequestError
+from core.model_providers.model_factory import ModelFactory
 from extensions.ext_redis import redis_client
-from libs.helper import TimestampField
+from fields.document_fields import document_with_segments_fields, document_fields, \
+    dataset_and_document_fields, document_status_fields
 from extensions.ext_database import db
 from models.dataset import DatasetProcessRule, Dataset
 from models.dataset import Document, DocumentSegment
@@ -29,62 +32,6 @@ from services.dataset_service import DocumentService, DatasetService
 from tasks.add_document_to_index_task import add_document_to_index_task
 from tasks.remove_document_from_index_task import remove_document_from_index_task
 
-dataset_fields = {
-    'id': fields.String,
-    'name': fields.String,
-    'description': fields.String,
-    'permission': fields.String,
-    'data_source_type': fields.String,
-    'indexing_technique': fields.String,
-    'created_by': fields.String,
-    'created_at': TimestampField,
-}
-
-document_fields = {
-    'id': fields.String,
-    'position': fields.Integer,
-    'data_source_type': fields.String,
-    'data_source_info': fields.Raw(attribute='data_source_info_dict'),
-    'dataset_process_rule_id': fields.String,
-    'name': fields.String,
-    'created_from': fields.String,
-    'created_by': fields.String,
-    'created_at': TimestampField,
-    'tokens': fields.Integer,
-    'indexing_status': fields.String,
-    'error': fields.String,
-    'enabled': fields.Boolean,
-    'disabled_at': TimestampField,
-    'disabled_by': fields.String,
-    'archived': fields.Boolean,
-    'display_status': fields.String,
-    'word_count': fields.Integer,
-    'hit_count': fields.Integer,
-}
-
-document_with_segments_fields = {
-    'id': fields.String,
-    'position': fields.Integer,
-    'data_source_type': fields.String,
-    'data_source_info': fields.Raw(attribute='data_source_info_dict'),
-    'dataset_process_rule_id': fields.String,
-    'name': fields.String,
-    'created_from': fields.String,
-    'created_by': fields.String,
-    'created_at': TimestampField,
-    'tokens': fields.Integer,
-    'indexing_status': fields.String,
-    'error': fields.String,
-    'enabled': fields.Boolean,
-    'disabled_at': TimestampField,
-    'disabled_by': fields.String,
-    'archived': fields.Boolean,
-    'display_status': fields.String,
-    'word_count': fields.Integer,
-    'hit_count': fields.Integer,
-    'completed_segments': fields.Integer,
-    'total_segments': fields.Integer
-}
 
 class DocumentResource(Resource):
     def get_document(self, dataset_id: str, document_id: str) -> Document:
@@ -133,6 +80,10 @@ class GetProcessRuleApi(Resource):
         req_data = request.args
 
         document_id = req_data.get('document_id')
+        
+        # get default rules
+        mode = DocumentService.DEFAULT_RULES['mode']
+        rules = DocumentService.DEFAULT_RULES['rules']
         if document_id:
             # get the latest process rule
             document = Document.query.get_or_404(document_id)
@@ -153,11 +104,9 @@ class GetProcessRuleApi(Resource):
                 order_by(DatasetProcessRule.created_at.desc()). \
                 limit(1). \
                 one_or_none()
-            mode = dataset_process_rule.mode
-            rules = dataset_process_rule.rules_dict
-        else:
-            mode = DocumentService.DEFAULT_RULES['mode']
-            rules = DocumentService.DEFAULT_RULES['rules']
+            if dataset_process_rule:
+                mode = dataset_process_rule.mode
+                rules = dataset_process_rule.rules_dict
 
         return {
             'mode': mode,
@@ -269,6 +218,9 @@ class DatasetDocumentListApi(Resource):
         parser.add_argument('process_rule', type=dict, required=False, location='json')
         parser.add_argument('duplicate', type=bool, nullable=False, location='json')
         parser.add_argument('original_document_id', type=str, required=False, location='json')
+        parser.add_argument('doc_form', type=str, default='text_model', required=False, nullable=False, location='json')
+        parser.add_argument('doc_language', type=str, default='English', required=False, nullable=False,
+                            location='json')
         args = parser.parse_args()
 
         if not dataset.indexing_technique and not args['indexing_technique']:
@@ -279,8 +231,8 @@ class DatasetDocumentListApi(Resource):
 
         try:
             documents, batch = DocumentService.save_document_with_dataset_id(dataset, args, current_user)
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -293,11 +245,6 @@ class DatasetDocumentListApi(Resource):
 
 
 class DatasetInitApi(Resource):
-    dataset_and_document_fields = {
-        'dataset': fields.Nested(dataset_fields),
-        'documents': fields.List(fields.Nested(document_fields)),
-        'batch': fields.String
-    }
 
     @setup_required
     @login_required
@@ -313,7 +260,21 @@ class DatasetInitApi(Resource):
                             nullable=False, location='json')
         parser.add_argument('data_source', type=dict, required=True, nullable=True, location='json')
         parser.add_argument('process_rule', type=dict, required=True, nullable=True, location='json')
+        parser.add_argument('doc_form', type=str, default='text_model', required=False, nullable=False, location='json')
+        parser.add_argument('doc_language', type=str, default='English', required=False, nullable=False,
+                            location='json')
         args = parser.parse_args()
+        if args['indexing_technique'] == 'high_quality':
+            try:
+                ModelFactory.get_embedding_model(
+                    tenant_id=current_user.current_tenant_id
+                )
+            except LLMBadRequestError:
+                raise ProviderNotInitializeError(
+                    f"No Embedding Model available. Please configure a valid provider "
+                    f"in the Settings -> Model Provider.")
+            except ProviderTokenNotInitError as ex:
+                raise ProviderNotInitializeError(ex.description)
 
         # validate args
         DocumentService.document_create_args_validate(args)
@@ -324,8 +285,8 @@ class DatasetInitApi(Resource):
                 document_data=args,
                 account=current_user
             )
-        except ProviderTokenNotInitError:
-            raise ProviderNotInitializeError()
+        except ProviderTokenNotInitError as ex:
+            raise ProviderNotInitializeError(ex.description)
         except QuotaExceededError:
             raise ProviderQuotaExceededError()
         except ModelCurrentlyNotSupportError:
@@ -380,7 +341,16 @@ class DocumentIndexingEstimateApi(DocumentResource):
 
                 indexing_runner = IndexingRunner()
 
-                response = indexing_runner.file_indexing_estimate([file], data_process_rule_dict)
+                try:
+                    response = indexing_runner.file_indexing_estimate(current_user.current_tenant_id, [file],
+                                                                      data_process_rule_dict, None,
+                                                                      'English', dataset_id)
+                except LLMBadRequestError:
+                    raise ProviderNotInitializeError(
+                        f"No Embedding Model available. Please configure a valid provider "
+                        f"in the Settings -> Model Provider.")
+                except ProviderTokenNotInitError as ex:
+                    raise ProviderNotInitializeError(ex.description)
 
         return response
 
@@ -441,36 +411,36 @@ class DocumentBatchIndexingEstimateApi(DocumentResource):
                 raise NotFound("File not found.")
 
             indexing_runner = IndexingRunner()
-            response = indexing_runner.file_indexing_estimate(file_details, data_process_rule_dict)
-        elif dataset.data_source_type:
+            try:
+                response = indexing_runner.file_indexing_estimate(current_user.current_tenant_id, file_details,
+                                                                  data_process_rule_dict, None,
+                                                                  'English', dataset_id)
+            except LLMBadRequestError:
+                raise ProviderNotInitializeError(
+                    f"No Embedding Model available. Please configure a valid provider "
+                    f"in the Settings -> Model Provider.")
+            except ProviderTokenNotInitError as ex:
+                raise ProviderNotInitializeError(ex.description)
+        elif dataset.data_source_type == 'notion_import':
 
             indexing_runner = IndexingRunner()
-            response = indexing_runner.notion_indexing_estimate(info_list,
-                                                                data_process_rule_dict)
+            try:
+                response = indexing_runner.notion_indexing_estimate(current_user.current_tenant_id,
+                                                                    info_list,
+                                                                    data_process_rule_dict,
+                                                                    None, 'English', dataset_id)
+            except LLMBadRequestError:
+                raise ProviderNotInitializeError(
+                    f"No Embedding Model available. Please configure a valid provider "
+                    f"in the Settings -> Model Provider.")
+            except ProviderTokenNotInitError as ex:
+                raise ProviderNotInitializeError(ex.description)
         else:
             raise ValueError('Data source type not support')
         return response
 
 
 class DocumentBatchIndexingStatusApi(DocumentResource):
-    document_status_fields = {
-        'id': fields.String,
-        'indexing_status': fields.String,
-        'processing_started_at': TimestampField,
-        'parsing_completed_at': TimestampField,
-        'cleaning_completed_at': TimestampField,
-        'splitting_completed_at': TimestampField,
-        'completed_at': TimestampField,
-        'paused_at': TimestampField,
-        'error': fields.String,
-        'stopped_at': TimestampField,
-        'completed_segments': fields.Integer,
-        'total_segments': fields.Integer,
-    }
-
-    document_status_fields_list = {
-        'data': fields.List(fields.Nested(document_status_fields))
-    }
 
     @setup_required
     @login_required
@@ -488,7 +458,9 @@ class DocumentBatchIndexingStatusApi(DocumentResource):
                                                           DocumentSegment.status != 're_segment').count()
             document.completed_segments = completed_segments
             document.total_segments = total_segments
-            documents_status.append(marshal(document, self.document_status_fields))
+            if document.is_paused:
+                document.indexing_status = 'paused'
+            documents_status.append(marshal(document, document_status_fields))
         data = {
             'data': documents_status
         }
@@ -496,20 +468,6 @@ class DocumentBatchIndexingStatusApi(DocumentResource):
 
 
 class DocumentIndexingStatusApi(DocumentResource):
-    document_status_fields = {
-        'id': fields.String,
-        'indexing_status': fields.String,
-        'processing_started_at': TimestampField,
-        'parsing_completed_at': TimestampField,
-        'cleaning_completed_at': TimestampField,
-        'splitting_completed_at': TimestampField,
-        'completed_at': TimestampField,
-        'paused_at': TimestampField,
-        'error': fields.String,
-        'stopped_at': TimestampField,
-        'completed_segments': fields.Integer,
-        'total_segments': fields.Integer,
-    }
 
     @setup_required
     @login_required
@@ -531,8 +489,9 @@ class DocumentIndexingStatusApi(DocumentResource):
 
         document.completed_segments = completed_segments
         document.total_segments = total_segments
-
-        return marshal(document, self.document_status_fields)
+        if document.is_paused:
+            document.indexing_status = 'paused'
+        return marshal(document, document_status_fields)
 
 
 class DocumentDetailApi(DocumentResource):
@@ -583,7 +542,8 @@ class DocumentDetailApi(DocumentResource):
                 'segment_count': document.segment_count,
                 'average_segment_length': document.average_segment_length,
                 'hit_count': document.hit_count,
-                'display_status': document.display_status
+                'display_status': document.display_status,
+                'doc_form': document.doc_form
             }
         else:
             process_rules = DatasetService.get_process_rules(dataset_id)
@@ -614,7 +574,8 @@ class DocumentDetailApi(DocumentResource):
                 'segment_count': document.segment_count,
                 'average_segment_length': document.average_segment_length,
                 'hit_count': document.hit_count,
-                'display_status': document.display_status
+                'display_status': document.display_status,
+                'doc_form': document.doc_form
             }
 
         return response, 200
@@ -663,6 +624,12 @@ class DocumentDeleteApi(DocumentResource):
     def delete(self, dataset_id, document_id):
         dataset_id = str(dataset_id)
         document_id = str(document_id)
+        dataset = DatasetService.get_dataset(dataset_id)
+        if dataset is None:
+            raise NotFound("Dataset not found.")
+        # check user's model setting
+        DatasetService.check_dataset_model_setting(dataset)
+
         document = self.get_document(dataset_id, document_id)
 
         try:
@@ -703,11 +670,13 @@ class DocumentMetadataApi(DocumentResource):
         metadata_schema = DocumentService.DOCUMENT_METADATA_SCHEMA[doc_type]
 
         document.doc_metadata = {}
-
-        for key, value_type in metadata_schema.items():
-            value = doc_metadata.get(key)
-            if value is not None and isinstance(value, value_type):
-                document.doc_metadata[key] = value
+        if doc_type == 'others':
+            document.doc_metadata = doc_metadata
+        else:
+            for key, value_type in metadata_schema.items():
+                value = doc_metadata.get(key)
+                if value is not None and isinstance(value, value_type):
+                    document.doc_metadata[key] = value
 
         document.doc_type = doc_type
         document.updated_at = datetime.utcnow()
@@ -723,6 +692,12 @@ class DocumentStatusApi(DocumentResource):
     def patch(self, dataset_id, document_id, action):
         dataset_id = str(dataset_id)
         document_id = str(document_id)
+        dataset = DatasetService.get_dataset(dataset_id)
+        if dataset is None:
+            raise NotFound("Dataset not found.")
+        # check user's model setting
+        DatasetService.check_dataset_model_setting(dataset)
+
         document = self.get_document(dataset_id, document_id)
 
         # The role of the current user in the ta table must be admin or owner
@@ -787,11 +762,39 @@ class DocumentStatusApi(DocumentResource):
                 remove_document_from_index_task.delay(document_id)
 
             return {'result': 'success'}, 200
+        elif action == "un_archive":
+            if not document.archived:
+                raise InvalidActionError('Document is not archived.')
+
+            # check document limit
+            if current_app.config['EDITION'] == 'CLOUD':
+                documents_count = DocumentService.get_tenant_documents_count()
+                total_count = documents_count + 1
+                tenant_document_count = int(current_app.config['TENANT_DOCUMENT_COUNT'])
+                if total_count > tenant_document_count:
+                    raise ValueError(f"All your documents have overed limit {tenant_document_count}.")
+
+            document.archived = False
+            document.archived_at = None
+            document.archived_by = None
+            document.updated_at = datetime.utcnow()
+            db.session.commit()
+
+            # Set cache to prevent indexing the same document multiple times
+            redis_client.setex(indexing_cache_key, 600, 1)
+
+            add_document_to_index_task.delay(document_id)
+
+            return {'result': 'success'}, 200
         else:
             raise InvalidActionError()
 
 
 class DocumentPauseApi(DocumentResource):
+
+    @setup_required
+    @login_required
+    @account_initialization_required
     def patch(self, dataset_id, document_id):
         """pause document."""
         dataset_id = str(dataset_id)
@@ -821,6 +824,9 @@ class DocumentPauseApi(DocumentResource):
 
 
 class DocumentRecoverApi(DocumentResource):
+    @setup_required
+    @login_required
+    @account_initialization_required
     def patch(self, dataset_id, document_id):
         """recover document."""
         dataset_id = str(dataset_id)
@@ -844,6 +850,21 @@ class DocumentRecoverApi(DocumentResource):
             raise DocumentIndexingError('Document is not in paused status.')
 
         return {'result': 'success'}, 204
+
+
+class DocumentLimitApi(DocumentResource):
+    @setup_required
+    @login_required
+    @account_initialization_required
+    def get(self):
+        """get document limit"""
+        documents_count = DocumentService.get_tenant_documents_count()
+        tenant_document_count = int(current_app.config['TENANT_DOCUMENT_COUNT'])
+
+        return {
+            'documents_count': documents_count,
+            'documents_limit': tenant_document_count
+                }, 200
 
 
 api.add_resource(GetProcessRuleApi, '/datasets/process-rule')
@@ -871,3 +892,4 @@ api.add_resource(DocumentStatusApi,
                  '/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/status/<string:action>')
 api.add_resource(DocumentPauseApi, '/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/processing/pause')
 api.add_resource(DocumentRecoverApi, '/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/processing/resume')
+api.add_resource(DocumentLimitApi, '/datasets/limit')

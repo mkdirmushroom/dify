@@ -1,25 +1,30 @@
+import json
 import logging
 import time
 
 from typing import Any, Dict, List, Union, Optional
 
+from langchain.agents import openai_functions_agent, openai_functions_multi_agent
 from langchain.callbacks.base import BaseCallbackHandler
-from langchain.schema import AgentAction, AgentFinish, LLMResult
+from langchain.schema import AgentAction, AgentFinish, LLMResult, ChatGeneration, BaseMessage
 
 from core.callback_handler.entity.agent_loop import AgentLoop
 from core.conversation_message_task import ConversationMessageTask
+from core.model_providers.models.entity.message import PromptMessage
+from core.model_providers.models.llm.base import BaseLLM
 
 
 class AgentLoopGatherCallbackHandler(BaseCallbackHandler):
     """Callback Handler that prints to std out."""
     raise_error: bool = True
 
-    def __init__(self, model_name, conversation_message_task: ConversationMessageTask) -> None:
+    def __init__(self, model_instance: BaseLLM, conversation_message_task: ConversationMessageTask) -> None:
         """Initialize callback handler."""
-        self.model_name = model_name
+        self.model_instance = model_instance
         self.conversation_message_task = conversation_message_task
         self._agent_loops = []
         self._current_loop = None
+        self._message_agent_thought = None
         self.current_chain = None
 
     @property
@@ -29,6 +34,7 @@ class AgentLoopGatherCallbackHandler(BaseCallbackHandler):
     def clear_agent_loops(self) -> None:
         self._agent_loops = []
         self._current_loop = None
+        self._message_agent_thought = None
 
     @property
     def always_verbose(self) -> bool:
@@ -39,6 +45,21 @@ class AgentLoopGatherCallbackHandler(BaseCallbackHandler):
     def ignore_chain(self) -> bool:
         """Whether to ignore chain callbacks."""
         return True
+
+    def on_chat_model_start(
+            self,
+            serialized: Dict[str, Any],
+            messages: List[List[BaseMessage]],
+            **kwargs: Any
+    ) -> Any:
+        if not self._current_loop:
+            # Agent start with a LLM query
+            self._current_loop = AgentLoop(
+                position=len(self._agent_loops) + 1,
+                prompt="\n".join([message.content for message in messages[0]]),
+                status='llm_started',
+                started_at=time.perf_counter()
+            )
 
     def on_llm_start(
         self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
@@ -61,16 +82,37 @@ class AgentLoopGatherCallbackHandler(BaseCallbackHandler):
         # kwargs={}
         if self._current_loop and self._current_loop.status == 'llm_started':
             self._current_loop.status = 'llm_end'
-            self._current_loop.prompt_tokens = response.llm_output['token_usage']['prompt_tokens']
-            self._current_loop.completion = response.generations[0][0].text
-            self._current_loop.completion_tokens = response.llm_output['token_usage']['completion_tokens']
+            if response.llm_output:
+                self._current_loop.prompt_tokens = response.llm_output['token_usage']['prompt_tokens']
+            else:
+                self._current_loop.prompt_tokens = self.model_instance.get_num_tokens(
+                    [PromptMessage(content=self._current_loop.prompt)]
+                )
+            completion_generation = response.generations[0][0]
+            if isinstance(completion_generation, ChatGeneration):
+                completion_message = completion_generation.message
+                if 'function_call' in completion_message.additional_kwargs:
+                    self._current_loop.completion \
+                        = json.dumps({'function_call': completion_message.additional_kwargs['function_call']})
+                else:
+                    self._current_loop.completion = response.generations[0][0].text
+            else:
+                self._current_loop.completion = completion_generation.text
+
+            if response.llm_output:
+                self._current_loop.completion_tokens = response.llm_output['token_usage']['completion_tokens']
+            else:
+                self._current_loop.completion_tokens = self.model_instance.get_num_tokens(
+                    [PromptMessage(content=self._current_loop.completion)]
+                )
 
     def on_llm_error(
         self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
     ) -> None:
-        logging.error(error)
+        logging.debug("Agent on_llm_error: %s", error)
         self._agent_loops = []
         self._current_loop = None
+        self._message_agent_thought = None
 
     def on_tool_start(
         self,
@@ -89,15 +131,29 @@ class AgentLoopGatherCallbackHandler(BaseCallbackHandler):
     ) -> Any:
         """Run on agent action."""
         tool = action.tool
-        tool_input = action.tool_input
-        action_name_position = action.log.index("\nAction:") + 1 if action.log else -1
-        thought = action.log[:action_name_position].strip() if action.log else ''
+        tool_input = json.dumps({"query": action.tool_input}
+                                if isinstance(action.tool_input, str) else action.tool_input)
+        completion = None
+        if isinstance(action, openai_functions_agent.base._FunctionsAgentAction) \
+                or isinstance(action, openai_functions_multi_agent.base._FunctionsAgentAction):
+            thought = action.log.strip()
+            completion = json.dumps({'function_call': action.message_log[0].additional_kwargs['function_call']})
+        else:
+            action_name_position = action.log.index("Action:") if action.log else -1
+            thought = action.log[:action_name_position].strip() if action.log else ''
 
         if self._current_loop and self._current_loop.status == 'llm_end':
             self._current_loop.status = 'agent_action'
             self._current_loop.thought = thought
             self._current_loop.tool_name = tool
             self._current_loop.tool_input = tool_input
+            if completion is not None:
+                self._current_loop.completion = completion
+
+            self._message_agent_thought = self.conversation_message_task.on_agent_start(
+                self.current_chain,
+                self._current_loop
+            )
 
     def on_tool_end(
         self,
@@ -120,18 +176,22 @@ class AgentLoopGatherCallbackHandler(BaseCallbackHandler):
             self._current_loop.completed_at = time.perf_counter()
             self._current_loop.latency = self._current_loop.completed_at - self._current_loop.started_at
 
-            self.conversation_message_task.on_agent_end(self.current_chain, self.model_name, self._current_loop)
+            self.conversation_message_task.on_agent_end(
+                self._message_agent_thought, self.model_instance, self._current_loop
+            )
 
             self._agent_loops.append(self._current_loop)
             self._current_loop = None
+            self._message_agent_thought = None
 
     def on_tool_error(
         self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
     ) -> None:
         """Do nothing."""
-        logging.error(error)
+        logging.debug("Agent on_tool_error: %s", error)
         self._agent_loops = []
         self._current_loop = None
+        self._message_agent_thought = None
 
     def on_agent_finish(self, finish: AgentFinish, **kwargs: Any) -> Any:
         """Run on agent end."""
@@ -141,10 +201,18 @@ class AgentLoopGatherCallbackHandler(BaseCallbackHandler):
             self._current_loop.completed = True
             self._current_loop.completed_at = time.perf_counter()
             self._current_loop.latency = self._current_loop.completed_at - self._current_loop.started_at
+            self._current_loop.thought = '[DONE]'
+            self._message_agent_thought = self.conversation_message_task.on_agent_start(
+                self.current_chain,
+                self._current_loop
+            )
 
-            self.conversation_message_task.on_agent_end(self.current_chain, self.model_name, self._current_loop)
+            self.conversation_message_task.on_agent_end(
+                self._message_agent_thought, self.model_instance, self._current_loop
+            )
 
             self._agent_loops.append(self._current_loop)
             self._current_loop = None
+            self._message_agent_thought = None
         elif not self._current_loop and self._agent_loops:
             self._agent_loops[-1].status = 'agent_finish'
