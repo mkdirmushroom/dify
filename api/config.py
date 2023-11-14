@@ -139,6 +139,8 @@ class Config:
             'CONSOLE_CORS_ALLOW_ORIGINS', self.CONSOLE_WEB_URL)
         self.WEB_API_CORS_ALLOW_ORIGINS = get_cors_allow_origins(
             'WEB_API_CORS_ALLOW_ORIGINS', '*')
+        self.SERVICE_API_CORS_ALLOW_ORIGINS = get_cors_allow_origins(
+            'SERVICE_API_CORS_ALLOW_ORIGINS', '*')
 
         # check update url
         self.CHECK_UPDATE_URL = get_env('CHECK_UPDATE_URL')
@@ -218,8 +220,6 @@ class Config:
         self.MAIL_TYPE = get_env('MAIL_TYPE')
         self.MAIL_DEFAULT_SEND_FROM = get_env('MAIL_DEFAULT_SEND_FROM')
         self.RESEND_API_KEY = get_env('RESEND_API_KEY')
-        self.SERVICE_API_CORS_ALLOW_ORIGINS = get_cors_allow_origins(
-            'SERVICE_API_CORS_ALLOW_ORIGINS', '*')
 
         # ------------------------
         # Sentry Configurations.
